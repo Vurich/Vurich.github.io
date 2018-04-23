@@ -1,0 +1,999 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes" ?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>Posts on troubles.md</title>
+    <link>http://troubles.md/posts/</link>
+    <description>Recent content in Posts on troubles.md</description>
+    <generator>Hugo -- gohugo.io</generator>
+    <language>en-us</language>
+    <lastBuildDate>Wed, 17 May 2017 12:00:33 +0200</lastBuildDate>
+    
+        <atom:link href="http://troubles.md/posts/index.xml" rel="self" type="application/rss+xml" />
+    
+    
+    <item>
+      <title>Acheiving warp speed with Rust</title>
+      <link>http://troubles.md/posts/rust-optimization/</link>
+      <pubDate>Wed, 17 May 2017 12:00:33 +0200</pubDate>
+      
+      <guid>http://troubles.md/posts/rust-optimization/</guid>
+      <description>
+
+&lt;h3 id=&#34;contents&#34;&gt;Contents:&lt;/h3&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;#number-one-optimization-tip-dont&#34;&gt;Number one optimization tip: don&amp;rsquo;t&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#never-optimize-blindly&#34;&gt;Never optimize blindly&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#dont-bother-optimizing-one-time-costs&#34;&gt;Don&amp;rsquo;t bother optimizing one-time costs&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#improve-your-algorithms&#34;&gt;Improve your algorithms&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#cpu-architecture-primer&#34;&gt;CPU architecture primer&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#keep-as-much-as-possible-in-cache&#34;&gt;Keep as much as possible in cache&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#keep-as-much-as-possible-in-registers&#34;&gt;Keep as much as possible in registers&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#avoid-boxtrait&#34;&gt;Avoid &lt;code&gt;Box&amp;lt;Trait&amp;gt;&lt;/code&gt;&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#use-stack-based-variable-length-datatypes&#34;&gt;Use stack-based variable-length datatypes&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#loop-unrolling-is-still-cool&#34;&gt;Loop unrolling is still cool&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#assert-conditions-beforehand&#34;&gt;&lt;code&gt;assert!&lt;/code&gt; conditions beforehand&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#use-link-time-optimization&#34;&gt;Use link-time optimization&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#dont-use-inlinealways&#34;&gt;Don&amp;rsquo;t use &lt;code&gt;#[inline(always)]&lt;/code&gt;&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#parallelize-but-not-how-you-think&#34;&gt;Parallelize, but not how you think&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#a-case-study&#34;&gt;A case study&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#wrapping-up&#34;&gt;Wrapping up&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;hr /&gt;
+
+&lt;p&gt;If you&amp;rsquo;re looking to write fast code in Rust, good news! Rust makes it really
+easy to write really fast code. The focus on zero-cost abstractions, the
+lack of implicit boxing and the static memory management means that even naïve
+code is often faster than the equivalent in other languages, and certainly
+faster than naïve code in any equally-safe language. Maybe, though, like most
+programmers you&amp;rsquo;ve spent your whole programming career safely insulated from
+having to think about any of the details of the machine, and now you want to dig
+a little deeper and find out the real reason that Python script you rewrote in
+Rust runs 100x faster and uses a 10th of the memory. After all, they both do the
+same thing and run on the same CPU, right?&lt;/p&gt;
+
+&lt;p&gt;So, here&amp;rsquo;s an optimization guide, aimed at those who know how to program but
+maybe don&amp;rsquo;t know how it maps to real ones and zeroes on the bare metal of your
+CPU. I&amp;rsquo;ll try to weave practical tips about optimizing Rust code with
+explanations of the reason why it&amp;rsquo;s faster than the alternative, and we&amp;rsquo;ll end
+with a case study from the Rust standard library.&lt;/p&gt;
+
+&lt;p&gt;This post assumes decent familiarity with programming, a beginner&amp;rsquo;s familiarity
+with Rust and almost no familiarity with CPU architecture.&lt;/p&gt;
+
+&lt;h2 id=&#34;number-one-optimization-tip-don-t&#34;&gt;Number one optimization tip: don&amp;rsquo;t&lt;/h2&gt;
+
+&lt;p&gt;Ok, I&amp;rsquo;ll start with a few disclaimers before I get into the meat. Firstly,
+unless you&amp;rsquo;re running into performance problems in real-life usage, optimize
+your code for readability before you optimize it for runtime performance.
+Compilers and humans alike are better at understanding boring, straightforward
+code, so if you write that first you&amp;rsquo;ll be likely to have &amp;ldquo;good enough&amp;rdquo;
+performance with the added benefit of being maintainable. If you write nice,
+refactorable code it&amp;rsquo;ll be easy to change if you later realize that it&amp;rsquo;s being
+wasteful.&lt;/p&gt;
+
+&lt;p&gt;That&amp;rsquo;s not to say that performance doesn&amp;rsquo;t matter. You shouldn&amp;rsquo;t only optimize
+&lt;em&gt;slow&lt;/em&gt; programs. A long-running program using high amounts of CPU but not
+causing visible slowness is just as bad as a program that takes 30s instead of
+3s to process some data, it&amp;rsquo;s just that the former is wasting battery and the
+latter is wasting time. Weigh up the time it would take to optimize the code
+against the benefit you would get from the optimization.&lt;/p&gt;
+
+&lt;p&gt;The reason maintainability is so important is that lot of optimizations are
+&amp;ldquo;try it and see&amp;rdquo; - if you&amp;rsquo;re unable to make sweeping changes to your code
+without breaking it you&amp;rsquo;re going to have a really bad time. Now, speaking of
+&amp;ldquo;try it and see&amp;rdquo;&amp;hellip;&lt;/p&gt;
+
+&lt;h2 id=&#34;never-optimize-blindly&#34;&gt;Never optimize blindly&lt;/h2&gt;
+
+&lt;p&gt;There are lots of performance-tracing tools out there. A famous tool/set of
+tools for C and other systems languages is &lt;a href=&#34;http://valgrind.org/&#34;&gt;&lt;code&gt;valgrind&lt;/code&gt;&lt;/a&gt;, which are
+extremely powerful but can be scary to get started with, so if you just want to
+have a quick overview of what your program is doing from a performance
+standpoint check out &lt;a href=&#34;http://blog.adamperry.me/rust/2016/07/24/profiling-rust-perf-flamegraph/&#34;&gt;this article on analyzing Rust with &lt;code&gt;perf&lt;/code&gt;&lt;/a&gt;, a
+fantastic and easy-to-use performance tool for Linux. Unless there&amp;rsquo;s a glaring
+flaw, like pervasive &lt;code&gt;clone&lt;/code&gt;ing or a blatantly sub-optimal algorithm, &lt;code&gt;perf&lt;/code&gt;
+will likely give better results than simply optimizing stuff that &amp;ldquo;looks slow&amp;rdquo;.&lt;/p&gt;
+
+&lt;p&gt;Another tool that&amp;rsquo;s good to help you avoid gotchas of all kinds (not just
+performance) is &lt;a href=&#34;https://github.com/Manishearth/rust-clippy&#34;&gt;&lt;code&gt;clippy&lt;/code&gt;&lt;/a&gt;, but you already knew that because you&amp;rsquo;re
+using it on all your code to begin with, right?&lt;/p&gt;
+
+&lt;p&gt;&lt;code&gt;perf&lt;/code&gt; also shows the cumulative cost of each function over the course of the
+program&amp;rsquo;s runtime, which leads me to my next point:&lt;/p&gt;
+
+&lt;h2 id=&#34;don-t-bother-optimizing-one-time-costs&#34;&gt;Don&amp;rsquo;t bother optimizing one-time costs&lt;/h2&gt;
+
+&lt;p&gt;Your config-parsing code can be as slow as you like and it&amp;rsquo;s unlikely to matter.
+Don&amp;rsquo;t just optimize the slowest function in your program, optimize the one that
+takes up the most of your runtime. Those may be the same function, but if you
+get a 2 millisecond improvement on a function that&amp;rsquo;s called 1000 times, that&amp;rsquo;s
+better than a 1 second improvement on a function that&amp;rsquo;s called once.&lt;/p&gt;
+
+&lt;h2 id=&#34;improve-your-algorithms&#34;&gt;Improve your algorithms&lt;/h2&gt;
+
+&lt;p&gt;Now, as with every article on performance, this is where I add in the requisite
+disclaimer of &lt;em&gt;use better algorithms first&lt;/em&gt;. Don&amp;rsquo;t invent new algorithms unless
+you do that for a living, but in all likelihood if you&amp;rsquo;re running into
+performance problems it&amp;rsquo;s more likely to be due to poor algorithms than to poor
+implementations. Most programmers test their code on small datasets, but if you
+have &lt;code&gt;O(n²)&lt;/code&gt; complexity that won&amp;rsquo;t appear until you&amp;rsquo;ve tried it on a larger
+dataset. If you don&amp;rsquo;t know what your algorithm is, which is likely since most
+code is written without a specific algorithm in mind, just try to have as few
+loops as possible and remember that every use of &lt;code&gt;collect&lt;/code&gt; has to iterate over
+the entire collection at least once, and so the more work you can do using less
+loops the better. This is the same as optimization in any language though, so
+this is all I&amp;rsquo;ll say on algorithmic complexity for now. If you want to find out
+more, there are some excellent resources out there.&lt;/p&gt;
+
+&lt;h2 id=&#34;cpu-architecture-primer&#34;&gt;CPU architecture primer&lt;/h2&gt;
+
+&lt;p&gt;So maybe the complexity of your algorithm can&amp;rsquo;t be improved, and to make any
+improvements you need to get into the down-to-the-metal stuff. This is where the
+difference comes in between languages like Rust and C and languages like Python
+and Ruby. It&amp;rsquo;s entirely possible that you know this already, but it&amp;rsquo;s worth
+going over to make sure we&amp;rsquo;re all on the same page.&lt;/p&gt;
+
+&lt;p&gt;There are two parts to any computation, the stuff it does and the stuff it does
+it on. The instructions, and the data.&lt;/p&gt;
+
+&lt;p&gt;Instructions are stored in the instruction cache - a chunk of really, really
+fast memory that&amp;rsquo;s directly readable by the CPU. Each instruction can put and/or
+take data from the CPU&amp;rsquo;s registers, which is a small number of small pieces of
+memory, either 32 or 64 bits depending on your computer&amp;rsquo;s word size. Only a
+small amount of data can be in registers at any one time, however, and you can&amp;rsquo;t
+take a pointer to a register, so sometimes the CPU must access the computer&amp;rsquo;s
+RAM. Since RAM is slow, the CPU tries to read in bulk and then store the result
+in increasingly small, increasingly fast caches. If it tries to access data that
+isn&amp;rsquo;t in the smallest cache, it has to read the slightly larger cache,
+continuing up until it reaches RAM. The upshot is: you want to keep your data as
+small as possible, and for data that is accessed together to be close to each
+other so the CPU loads as much of it at once as possible. This should be enough
+information to get you through the rest of this article, but if you want to dive
+deeper into it you can check out the &lt;a href=&#34;https://en.wikipedia.org/wiki/Central_processing_unit#Structure_and_implementation&#34;&gt;structure and implementation section in
+the Wikipedia page for the CPU&lt;/a&gt;.&lt;/p&gt;
+
+&lt;h2 id=&#34;keep-as-much-as-possible-in-cache&#34;&gt;Keep as much as possible in cache&lt;/h2&gt;
+
+&lt;p&gt;The further away your data is from your CPU the slower your program will be. The
+very worst place for data to be is on a different computer. A less awful - but
+still very awful - place for data to be is on your hard drive. Better still is
+in your RAM but as mentioned before, RAM is slow. &lt;em&gt;Almost&lt;/em&gt; the best possible
+place for your data is in CPU cache. You may have heard some folklore that
+allocating is bad, and this is the main reason why. Accessing two different
+locations one after another on the stack is fine, since they&amp;rsquo;re likely to be on
+the same cache line. Accessing two different locations one after another on the
+heap is significantly slower, since it&amp;rsquo;s much less likely they they&amp;rsquo;re directly
+next to each other. We&amp;rsquo;ll go into exactly why this is in a moment.&lt;/p&gt;
+
+&lt;p&gt;If you have to allocate, because you need variable-size containers, shared
+ownership or owned trait objects (see below for why you probably don&amp;rsquo;t need
+trait objects), try to put data that will be accessed in
+sequence in order in RAM, so that when the CPU reads one element it necessarily
+has to read the next few elements too, meaning it doesn&amp;rsquo;t need to stall waiting
+for RAM in order to operate on them.&lt;/p&gt;
+
+&lt;p&gt;As a rule of thumb for whether something has to allocate: if you can tell me the
+amount of space the value will use up without running the program, it&amp;rsquo;s stored
+on the stack. If you don&amp;rsquo;t know something&amp;rsquo;s size until runtime, it&amp;rsquo;s allocated
+on the heap.&lt;/p&gt;
+
+&lt;p&gt;This means that &lt;code&gt;String&lt;/code&gt;, &lt;code&gt;Vec&lt;/code&gt;, &lt;code&gt;HashMap&lt;/code&gt; and &lt;code&gt;Box&amp;lt;Trait&amp;gt;&lt;/code&gt;/&lt;code&gt;Box&amp;lt;[T]&amp;gt;&lt;/code&gt; all
+allocate, but any user-defined struct does not (it may contain something that
+&lt;em&gt;does&lt;/em&gt; allocate, but it doesn&amp;rsquo;t require any extra allocation to construct if
+you already have an instance of the allocating type). &lt;code&gt;Box&amp;lt;T&amp;gt;&lt;/code&gt; where &lt;code&gt;T&lt;/code&gt; has a
+statically-known size also allocates, so be careful of recursive enums. If
+you&amp;rsquo;re creating a tree structure that then becomes immutable, like with an AST,
+you might want to consider using a &lt;code&gt;TypedArena&lt;/code&gt; to get tighter control over
+memory use. &lt;code&gt;TypedArena&lt;/code&gt; is still unstable though, and it increases complexity,
+so it&amp;rsquo;s not suitable for all use-cases.&lt;/p&gt;
+
+&lt;p&gt;This is why you may have heard some complaints about Haskell&amp;rsquo;s use of a linked
+list of characters to represent a string. I&amp;rsquo;m not going to beat &lt;a href=&#34;http://cglab.ca/~abeinges/blah/too-many-lists/book/#an-obligatory-public-service-announcement&#34;&gt;gankro&amp;rsquo;s
+wonderful rant on the subject&lt;/a&gt;, but suffice to say that this is
+more-or-less the worst possible data structure to choose when each individual
+element is small and the number of elements is large, because it needs to store
+a pointer for every element, instead of a single integer for the entire array.&lt;/p&gt;
+
+&lt;p&gt;Not only that, but without some truly crazy compiler optimizations this means
+that each element may not be directly after the element before it in memory.
+We&amp;rsquo;ll get to how to calculate this in a moment, but essentially that means that
+Haskell&amp;rsquo;s &lt;code&gt;String&lt;/code&gt; type can cause a cache miss up to twice &lt;em&gt;per element&lt;/em&gt;,
+whereas if you had a vector of &lt;code&gt;Char&lt;/code&gt;s (assuming 32-bit chars) it could only
+cause a maximum of 1 cache miss for every 16 elements. This is why the
+performance-savvy in languages such as Haskell and Lisp know to use vector-like
+constructs when possible.&lt;/p&gt;
+
+&lt;p&gt;Back in the world of Rust, this means that you should avoid indirection-heavy
+representations &lt;code&gt;Vec&amp;lt;Vec&amp;lt;_&amp;gt;&amp;gt;&lt;/code&gt; to represent a matrix, since this means that each
+sub-vec will likely be in a different location. Use a data structure that uses a
+flat &lt;code&gt;Vec&lt;/code&gt; as a backing array and builds on top of it, unless you really do need
+to have the inner &lt;code&gt;Vec&lt;/code&gt;s be both jagged (each sub-vec is of different size) and
+growable (you can change the size of each sub-vec independently at runtime). You
+probably don&amp;rsquo;t need either, let alone both. If you need them to be a uniform
+size, store a &lt;code&gt;Vec&lt;/code&gt; and a dimension tuple, if you need them to be jagged but
+don&amp;rsquo;t need them to be growable, store a list of indices and return slices of the
+flat &lt;code&gt;Vec&lt;/code&gt; using those. For an example of why this is good, let&amp;rsquo;s dive into some
+basic math. Let&amp;rsquo;s assume a matrix backed by flat vector and a number of columns
+(the number of rows can be inferred from columns + data length):&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;&lt;span style=&#34;color:#75715e&#34;&gt;// This isn&amp;#39;t how Vec is defined in the standard library but it&amp;#39;s a simplified
+&lt;/span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;// version with the same memory layout.
+&lt;/span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;struct&lt;/span&gt; Vec&lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt;T&lt;span style=&#34;color:#f92672&#34;&gt;&amp;gt;&lt;/span&gt; {
+    pointer: &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;mut&lt;/span&gt; T,
+    capacity: &lt;span style=&#34;color:#66d9ef&#34;&gt;usize&lt;/span&gt;,
+    len: &lt;span style=&#34;color:#66d9ef&#34;&gt;usize&lt;/span&gt;,
+}
+
+&lt;span style=&#34;color:#66d9ef&#34;&gt;struct&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;Matrix&lt;/span&gt;&lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt;T&lt;span style=&#34;color:#f92672&#34;&gt;&amp;gt;&lt;/span&gt; {
+    data: Vec&lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt;T&lt;span style=&#34;color:#f92672&#34;&gt;&amp;gt;&lt;/span&gt;,
+    num_columns: &lt;span style=&#34;color:#66d9ef&#34;&gt;usize&lt;/span&gt;,
+}&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;So a matrix with N rows and M columns needs &lt;code&gt;N * M * size_of::&amp;lt;T&amp;gt;()&lt;/code&gt; space for
+the elements, plus &lt;code&gt;size_of::&amp;lt;*mut T&amp;gt;() + 3 * size_of::&amp;lt;usize&amp;gt;()&lt;/code&gt; for the
+&amp;ldquo;metadata&amp;rdquo; (the vector&amp;rsquo;s pointer and the &lt;code&gt;capacity&lt;/code&gt;, &lt;code&gt;length&lt;/code&gt; and &lt;code&gt;num_columns&lt;/code&gt;
+fields). If we&amp;rsquo;re on a 64-bit CPU with 64 byte cache lines like the i7, we end
+up with both &lt;code&gt;*mut T&lt;/code&gt; and &lt;code&gt;usize&lt;/code&gt; being 4 bytes each. If we had a 4x4 matrix of
+&lt;code&gt;f32&lt;/code&gt; (also 4 bytes in size) this would mean:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-text&#34; data-lang=&#34;text&#34;&gt;Metadata size = 4 + 3 * 4 = 16
+Maximum 2 cache misses
+
+Data size = 4 * 4 * 4 = 64
+Maximum 2 cache misses&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Since the metadata and the data could be in separate parts of memory, we have to
+calculate maximum cache misses separately. Both the metadata and the data could
+cross a cache line and require two cache misses to load. This means that the
+whole matrix would miss the cache 4 times in the worst case. If we had a
+&lt;code&gt;Vec&amp;lt;Vec&amp;lt;f32&amp;gt;&amp;gt;&lt;/code&gt; representation that would mean the size of:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-text&#34; data-lang=&#34;text&#34;&gt;Matrix metadata size = 4 + 2 * 4 = 12
+Maximum 2 cache misses
+
+Inner vector metadata size = 4 * (4 + 2 * 4) = 48
+Maximum 2 cache misses
+
+Data size = 4 * 4 = 16
+Maximum 2 cache misses per row (8 cache misses total)&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;This means that the &lt;code&gt;Vec&amp;lt;Vec&amp;lt;f32&amp;gt;&amp;gt;&lt;/code&gt; representation could miss the cache up to
+12 times to read the whole array, much worse than the flat representation.&lt;/p&gt;
+
+&lt;p&gt;Even better, if you statically know the matrix&amp;rsquo;s size you can use
+statically-sized arrays like &lt;code&gt;[[T; N]; N]&lt;/code&gt;. These are even cheaper than flat
+vectors, although you obviously can&amp;rsquo;t use them for data with a variable size at
+runtime. The 4x4 array in the previous example would be &lt;code&gt;[[f32; 4]; 4]&lt;/code&gt; and take
+up 64 bytes, meaning that it would only take 2 cache misses to load in the worst
+case.&lt;/p&gt;
+
+&lt;h2 id=&#34;keep-as-much-as-possible-in-registers&#34;&gt;Keep as much as possible in registers&lt;/h2&gt;
+
+&lt;p&gt;Now, the absolute best place for your data - registers. The more work you can do
+without non-local writes the more that rustc and LLVM can assume about your
+data&amp;rsquo;s access patterns. This is good because it means that data can be mapped to
+the CPU&amp;rsquo;s physical registers, which are the fastest memory on your entire
+computer, but even better, if you make your data suitable for registers then
+anything that happens to that data can be aggressively optimized. Writes and
+reads through pointers have certain ordering restrictions on them that prevent
+optimization, but there are no such restrictions on register-allocated data.&lt;/p&gt;
+
+&lt;p&gt;It&amp;rsquo;s worth noting that since Rust restricts pointers more than C does, the
+ordering restrictions on pointers could be relaxed. This hasn&amp;rsquo;t been implemented
+in LLVM yet since most of the optimization work is based on leveraging the rules
+of C and C-family languages. Even if they did implement relaxations on the
+reordering rules, however, storing data in registers will still be easier to
+optimize.&lt;/p&gt;
+
+&lt;p&gt;So how do you get rustc to allocate things to registers? Essentially, the less
+pointers you have to write at runtime the better. Writing to local variables
+is better than writing through a mutable pointer. As much as possible, you
+should try to constrain mutable writes to the data that you have ownership over.
+So a mutable loop counter is fine, but passing a mutable reference to a loop
+counter through multiple layers of functions is not (unless they end up getting
+inlined, of course). This is really just an extension of one of my first points:
+clean, boring code is easier to optimize than spaghetti.&lt;/p&gt;
+
+&lt;h2 id=&#34;avoid-box-trait&#34;&gt;Avoid &lt;code&gt;Box&amp;lt;Trait&amp;gt;&lt;/code&gt;&lt;/h2&gt;
+
+&lt;p&gt;The canonical way to create trait objects is &lt;code&gt;Box&amp;lt;Trait&amp;gt;&lt;/code&gt;, but the majority of
+code can get away with &lt;code&gt;&amp;amp;mut Trait&lt;/code&gt;, which also has dynamic dispatch but saves
+an allocation. If you absolutely need ownership then use a &lt;code&gt;Box&lt;/code&gt;, but most
+use-cases can use an &lt;code&gt;&amp;amp;Trait&lt;/code&gt; or &lt;code&gt;&amp;amp;mut Trait&lt;/code&gt;. Even better is to avoid using a
+trait object all together. &lt;code&gt;impl Trait&lt;/code&gt; is the obvious way to avoid them, but
+that doesn&amp;rsquo;t allow you to store a heterogenous collection of elements that
+implement a single trait since it&amp;rsquo;s basically type inference in a fancy hat. A
+good trick for when you want to allow a variable but finite number of
+implementors of a type because you want to choose between them or iterate over
+them, use either a tuple or a recursive generic struct like this:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;struct&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;Cons&lt;/span&gt;&lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt;Head, Tail&lt;span style=&#34;color:#f92672&#34;&gt;&amp;gt;&lt;/span&gt;(Head, Tail);&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Since data structures in Rust don&amp;rsquo;t add any indirection or space overhead, you
+can implement a trait for this structure recursively and have a function that
+can take any number of parameters that runs as fast as an equivalent function
+that takes a fixed number of parameters. Here&amp;rsquo;s an example of how this could
+look for a function that takes a list of functions and calls them:&lt;/p&gt;
+
+&lt;p&gt;Allocating version:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;call_all_fns&lt;/span&gt;(fns: Vec&lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt;Box&lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt;FnBox() -&amp;gt; ()&lt;span style=&#34;color:#f92672&#34;&gt;&amp;gt;&amp;gt;&lt;/span&gt;) {
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;for&lt;/span&gt; f &lt;span style=&#34;color:#66d9ef&#34;&gt;in&lt;/span&gt; fns {
+        f();
+    }
+}&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Allocation-free version:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;struct&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;Cons&lt;/span&gt;&lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt;First, Second&lt;span style=&#34;color:#f92672&#34;&gt;&amp;gt;&lt;/span&gt;(First, Second);
+
+&lt;span style=&#34;color:#66d9ef&#34;&gt;trait&lt;/span&gt; HCons: Sized {
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;cons&lt;/span&gt;&lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt;T&lt;span style=&#34;color:#f92672&#34;&gt;&amp;gt;&lt;/span&gt;(self, other: &lt;span style=&#34;color:#a6e22e&#34;&gt;T&lt;/span&gt;) -&amp;gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;Cons&lt;/span&gt;&lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt;Self, T&lt;span style=&#34;color:#f92672&#34;&gt;&amp;gt;&lt;/span&gt; {
+        Cons(self, other)
+    }
+}
+
+&lt;span style=&#34;color:#66d9ef&#34;&gt;impl&lt;/span&gt;&lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt;T: Sized&lt;span style=&#34;color:#f92672&#34;&gt;&amp;gt;&lt;/span&gt; HCons &lt;span style=&#34;color:#66d9ef&#34;&gt;for&lt;/span&gt; T {}
+
+&lt;span style=&#34;color:#75715e&#34;&gt;// This is a hack to get around the fact that manually implementing the `Fn`
+&lt;/span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;// traits is currently unstable.
+&lt;/span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;trait&lt;/span&gt; Callable {
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;call&lt;/span&gt;(self);
+}
+
+&lt;span style=&#34;color:#66d9ef&#34;&gt;impl&lt;/span&gt;&lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt;F: Fn() -&amp;gt; ()&lt;span style=&#34;color:#f92672&#34;&gt;&amp;gt;&lt;/span&gt; Callable &lt;span style=&#34;color:#66d9ef&#34;&gt;for&lt;/span&gt; F {
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;call&lt;/span&gt;(self) { self() }
+}
+
+&lt;span style=&#34;color:#66d9ef&#34;&gt;impl&lt;/span&gt;&lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt;First: &lt;span style=&#34;color:#a6e22e&#34;&gt;Callable&lt;/span&gt;, Second: &lt;span style=&#34;color:#a6e22e&#34;&gt;Callable&lt;/span&gt;&lt;span style=&#34;color:#f92672&#34;&gt;&amp;gt;&lt;/span&gt; Callable &lt;span style=&#34;color:#66d9ef&#34;&gt;for&lt;/span&gt; Cons&lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt;First, Second&lt;span style=&#34;color:#f92672&#34;&gt;&amp;gt;&lt;/span&gt; {
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;call&lt;/span&gt;(self) {
+        self.&lt;span style=&#34;color:#ae81ff&#34;&gt;0.&lt;/span&gt;call();
+        self.&lt;span style=&#34;color:#ae81ff&#34;&gt;1.&lt;/span&gt;call();
+    }
+}
+
+&lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;call_all_fns_no_alloc&lt;/span&gt;&lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt;T: &lt;span style=&#34;color:#a6e22e&#34;&gt;Callable&lt;/span&gt;&lt;span style=&#34;color:#f92672&#34;&gt;&amp;gt;&lt;/span&gt;(fns: &lt;span style=&#34;color:#a6e22e&#34;&gt;T&lt;/span&gt;) {
+    fns.call();
+}&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Here&amp;rsquo;s what they both look like in use:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;main&lt;/span&gt;() {
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; first_fn &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;||&lt;/span&gt; { println&lt;span style=&#34;color:#f92672&#34;&gt;!&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Hello!&amp;#34;&lt;/span&gt;); };
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; second_fn &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;||&lt;/span&gt; { println&lt;span style=&#34;color:#f92672&#34;&gt;!&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;World!&amp;#34;&lt;/span&gt;); };
+    
+    call_all_fns(vec&lt;span style=&#34;color:#f92672&#34;&gt;!&lt;/span&gt;[Box::new(first_fn), Box::new(second_fn)]);
+    
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; first_fn &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;||&lt;/span&gt; { println&lt;span style=&#34;color:#f92672&#34;&gt;!&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Hello!&amp;#34;&lt;/span&gt;); };
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; second_fn &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;||&lt;/span&gt; { println&lt;span style=&#34;color:#f92672&#34;&gt;!&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;World!&amp;#34;&lt;/span&gt;); };
+    
+    call_all_fns_no_alloc(first_fn.cons(second_fn));
+}&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;The functions passed to &lt;code&gt;call_all_fns_no_alloc&lt;/code&gt; are eligible for inlining, they
+require no space overhead, and their instructions and data are directly next to
+each other in memory and are therefore much faster to access than if each of
+them were boxed. For example, in &lt;code&gt;combine&lt;/code&gt; there&amp;rsquo;s a &lt;code&gt;choice&lt;/code&gt; function that
+takes an array that could contain trait objects, but it also supplies a &lt;code&gt;.or()&lt;/code&gt;
+combinator (and a &lt;code&gt;choice!&lt;/code&gt; macro that expands to recursive &lt;code&gt;.or&lt;/code&gt; calls) that
+returns an &lt;code&gt;Or&amp;lt;A, B&amp;gt;&lt;/code&gt; that in turn implements &lt;code&gt;Parser&lt;/code&gt;. This means that dispatch
+is static and the objects are all stored in order in memory (because it&amp;rsquo;s just a
+set of recursive structs). You will still need dynamic dispatch for some cases,
+but using this method means that the number of cases where this is necessary is
+very small.&lt;/p&gt;
+
+&lt;h2 id=&#34;use-stack-based-variable-length-datatypes&#34;&gt;Use stack-based variable-length datatypes&lt;/h2&gt;
+
+&lt;p&gt;Fixed-length datatypes are trivially storable on the stack, but for
+dynamically-sized data it&amp;rsquo;s not so simple. However, &lt;a href=&#34;https://github.com/servo/rust-smallvec&#34;&gt;&lt;code&gt;smallvec&lt;/code&gt;&lt;/a&gt;,
+&lt;a href=&#34;https://github.com/jFransham/smallstring&#34;&gt;&lt;code&gt;smallstring&lt;/code&gt;&lt;/a&gt; and &lt;a href=&#34;https://github.com/servo/tendril&#34;&gt;&lt;code&gt;tendril&lt;/code&gt;&lt;/a&gt; are all variable-length
+datatypes that allow you to store small numbers of elements on the
+stack (shameless plug: &lt;code&gt;smallstring&lt;/code&gt; was written by me). Due to the law of small
+numbers, you are very likely to have more of these small strings than larger
+ones. This is good because it reduces allocation, but it&amp;rsquo;s &lt;em&gt;great&lt;/em&gt; if you&amp;rsquo;re
+storing these in a &lt;code&gt;Vec&lt;/code&gt; or &lt;code&gt;HashMap&lt;/code&gt;, since you will have less indirection and
+therefore better cache use. A good rule of thumb is to never have more than one
+layer of pointers to dereference before you reach your value (NASA enforces this
+rule in their C code, albeit for reliability and not performance).&lt;/p&gt;
+
+&lt;p&gt;Libraries like &lt;code&gt;smallvec&lt;/code&gt; are great for cache locality, since an array of
+&lt;code&gt;SmallVec&amp;lt;[T; 4]&amp;gt;&lt;/code&gt; will have exactly the same cache-locality as an array of just
+&lt;code&gt;T&lt;/code&gt; - as long as the length of each &lt;code&gt;SmallVec&lt;/code&gt; is below 8 it just gets stored in
+order. Going back to the cache-miss calculations from earlier:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;&lt;span style=&#34;color:#75715e&#34;&gt;// This is a gross oversimplification of how this type is implemented in the
+&lt;/span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;// crate, but it&amp;#39;s enough to explain how it works.
+&lt;/span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;enum&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;SmallVec&lt;/span&gt;&lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt;T&lt;span style=&#34;color:#f92672&#34;&gt;&amp;gt;&lt;/span&gt; {
+    Small([T; &lt;span style=&#34;color:#ae81ff&#34;&gt;4&lt;/span&gt;]),
+    Big(Vec&lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt;T&lt;span style=&#34;color:#f92672&#34;&gt;&amp;gt;&lt;/span&gt;),
+}
+
+&lt;span style=&#34;color:#66d9ef&#34;&gt;type&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;Matrix&lt;/span&gt;&lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt;T&lt;span style=&#34;color:#f92672&#34;&gt;&amp;gt;&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; SmallVec&lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt;SmallVec&lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt;T&lt;span style=&#34;color:#f92672&#34;&gt;&amp;gt;&amp;gt;&lt;/span&gt;;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;As long as there are less than or equal to 4 elements in the &lt;code&gt;SmallVec&lt;/code&gt;, the
+size of each instance is the size of the data plus the size of the tag, which
+is:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; size_of_data &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; size_of::&lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt;T&lt;span style=&#34;color:#f92672&#34;&gt;&amp;gt;&lt;/span&gt;() &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;4&lt;/span&gt;;
+&lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; size_of_tag  &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; max(size_of::&lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;u8&lt;/span&gt;&lt;span style=&#34;color:#f92672&#34;&gt;&amp;gt;&lt;/span&gt;(), align_of::&lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt;T&lt;span style=&#34;color:#f92672&#34;&gt;&amp;gt;&lt;/span&gt;());
+size_of_data &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; size_of_tag&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;The obvious question is why the size of the tag isn&amp;rsquo;t just &lt;code&gt;size_of::&amp;lt;u8&amp;gt;()&lt;/code&gt;.
+This is because if &lt;code&gt;T&lt;/code&gt; was more than 1 byte in size, this would mean that all of
+the elements would all be unaligned by 1 byte, which is bad. CPUs work much
+slower on unaligned data, but unless you write a compiler you will never have to
+think about that. The size of the data and its alignment don&amp;rsquo;t have to be the
+same. For structs, for example, the alignment is typically the largest alignment
+of any of its members. For primitive types like pointers, integers and floats
+the alignment is the same as its size. The alignment and size of an &lt;code&gt;f32&lt;/code&gt; are
+both 4. The alignment of a &lt;code&gt;SmallVec&amp;lt;f32&amp;gt;&lt;/code&gt; is the largest alignment of its
+members, which is same as the alignment of &lt;code&gt;[f32; 4]&lt;/code&gt;, which is the same as the
+alignment of &lt;code&gt;f32&lt;/code&gt;: 4.&lt;/p&gt;
+
+&lt;p&gt;Consider we had a 4x4 matrix of &lt;code&gt;f32&lt;/code&gt;, this would mean that the size of the
+matrix would be:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-text&#34; data-lang=&#34;text&#34;&gt;Inner SmallVec size = 4 * 4 + 4
+Matrix size = 4 * (4 * 4 + 4) + 4 = 84
+Maximum 3 cache misses&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;We don&amp;rsquo;t need to calculate the inner and outer cache misses seperately because
+they are guaranteed to be next to each other in memory.&lt;/p&gt;
+
+&lt;p&gt;From a cache standpoint this is as good as the flat vector representation, but
+there&amp;rsquo;s nothing stopping you from accidentally making the inner vectors
+different lengths and breaking the invariant that an array&amp;rsquo;s rows should be the
+same length.&lt;/p&gt;
+
+&lt;p&gt;I want to make something clear: you will never do these calculations in the
+process of optimizing your program. This is merely some mathematical
+justification for the voodoo folklore that &amp;ldquo;allocation is bad&amp;rdquo;, since that is
+often countered by &amp;ldquo;&lt;code&gt;malloc&lt;/code&gt; is fast&amp;rdquo;. Both statements are true - the actual
+process of allocating and deallocating memory is fast, but data structures that
+allocate are worse for use-cases that require maximum speed.&lt;/p&gt;
+
+&lt;h2 id=&#34;loop-unrolling-is-still-cool&#34;&gt;Loop unrolling is still cool&lt;/h2&gt;
+
+&lt;p&gt;&lt;a href=&#34;https://en.wikipedia.org/wiki/Duff&#39;s_device&#34;&gt;Duff&amp;rsquo;s device&lt;/a&gt; is fun, but array-length-generic unrolled loops are
+unlikely to be faster than the equivalent optimized naïve code nowadays, since
+any optimizing compiler worth its bits will do this kind of optimization without
+having to mangle your code and ruining future-you&amp;rsquo;s day.&lt;/p&gt;
+
+&lt;p&gt;Having said that, if you know that an array is likely to be a multiple of N
+size, try making it a &lt;code&gt;&amp;amp;[[T; N]]&lt;/code&gt; and operating on a &lt;code&gt;[T; N]&lt;/code&gt; in each iteration.
+This reduces the number of iterations (and therefore, the number of times you
+need to recalculate the loop variables) and allows the compiler to operate more
+aggressively on the loop body.&lt;/p&gt;
+
+&lt;p&gt;You can also use more classical loop unrolling if it allows you to reduce the
+&amp;ldquo;strength&amp;rdquo; of your operations. This means that if you have to calculate some
+value for each iteration of the loop and calculating this value takes longer
+than the body itself, manually unroll the body so you can calculate it less.
+Example: you can implement an integer logarithm function like so:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;log_base&lt;/span&gt;(&lt;span style=&#34;color:#66d9ef&#34;&gt;mut&lt;/span&gt; n: &lt;span style=&#34;color:#66d9ef&#34;&gt;usize&lt;/span&gt;, base: &lt;span style=&#34;color:#66d9ef&#34;&gt;usize&lt;/span&gt;) -&amp;gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;usize&lt;/span&gt; {
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;mut&lt;/span&gt; out &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt;;
+
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;loop&lt;/span&gt; {
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; n &lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt; base { &lt;span style=&#34;color:#66d9ef&#34;&gt;return&lt;/span&gt; out; }
+
+        out &lt;span style=&#34;color:#f92672&#34;&gt;+=&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt;;
+        n &lt;span style=&#34;color:#f92672&#34;&gt;/=&lt;/span&gt; base;
+    }
+}&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;However, &lt;code&gt;n /= base; out += 1;&lt;/code&gt; is slower to calculate than &lt;code&gt;n &amp;lt; base&lt;/code&gt;. To take
+advantage of this fact, you can unroll the loop like so:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;log_base_unrolled&lt;/span&gt;(&lt;span style=&#34;color:#66d9ef&#34;&gt;mut&lt;/span&gt; n: &lt;span style=&#34;color:#66d9ef&#34;&gt;usize&lt;/span&gt;, base: &lt;span style=&#34;color:#66d9ef&#34;&gt;usize&lt;/span&gt;) -&amp;gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;usize&lt;/span&gt; {
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;const&lt;/span&gt; UNROLL_COUNT: &lt;span style=&#34;color:#66d9ef&#34;&gt;usize&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;4&lt;/span&gt;;
+
+    &lt;span style=&#34;color:#75715e&#34;&gt;// We use a fixed-size array to ensure that we don&amp;#39;t get the array count and
+&lt;/span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;    &lt;span style=&#34;color:#75715e&#34;&gt;// the `out` skip value out of sync.
+&lt;/span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;    &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; premultiplied_base: [_; UNROLL_COUNT] &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; [
+        base,
+        base &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt; base,
+        base &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt; base &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt; base,
+        base &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt; base &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt; base &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt; base,
+    ];
+
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;mut&lt;/span&gt; out &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt;;
+    
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;loop&lt;/span&gt; {
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; n &lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt; premultiplied_base[&lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;] { &lt;span style=&#34;color:#66d9ef&#34;&gt;return&lt;/span&gt; out; }
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; n &lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt; premultiplied_base[&lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt;] { &lt;span style=&#34;color:#66d9ef&#34;&gt;return&lt;/span&gt; out &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt;; }
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; n &lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt; premultiplied_base[&lt;span style=&#34;color:#ae81ff&#34;&gt;2&lt;/span&gt;] { &lt;span style=&#34;color:#66d9ef&#34;&gt;return&lt;/span&gt; out &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;2&lt;/span&gt;; }
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; n &lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt; premultiplied_base[&lt;span style=&#34;color:#ae81ff&#34;&gt;3&lt;/span&gt;] { &lt;span style=&#34;color:#66d9ef&#34;&gt;return&lt;/span&gt; out &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;3&lt;/span&gt;; }
+        
+        n &lt;span style=&#34;color:#f92672&#34;&gt;/=&lt;/span&gt; precalculated_base[UNROLL_COUNT &lt;span style=&#34;color:#f92672&#34;&gt;-&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt;];
+        out &lt;span style=&#34;color:#f92672&#34;&gt;+=&lt;/span&gt; UNROLL_COUNT;
+    }
+}&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Here are the benchmarks I used:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;&lt;span style=&#34;color:#75715e&#34;&gt;#[bench]&lt;/span&gt;
+&lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;bench_log_base&lt;/span&gt;(b: &lt;span style=&#34;color:#66d9ef&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;mut&lt;/span&gt; Bencher) {
+    b.iter(&lt;span style=&#34;color:#f92672&#34;&gt;||&lt;/span&gt; {
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; input &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; black_box(&lt;span style=&#34;color:#ae81ff&#34;&gt;5000000120510250&lt;/span&gt;);
+
+        assert_eq&lt;span style=&#34;color:#f92672&#34;&gt;!&lt;/span&gt;(log_base(input, &lt;span style=&#34;color:#ae81ff&#34;&gt;10&lt;/span&gt;), &lt;span style=&#34;color:#ae81ff&#34;&gt;16&lt;/span&gt;);
+    });
+}
+
+&lt;span style=&#34;color:#75715e&#34;&gt;#[bench]&lt;/span&gt;
+&lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;bench_log_base_unrolled&lt;/span&gt;(b: &lt;span style=&#34;color:#66d9ef&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;mut&lt;/span&gt; Bencher) {
+    b.iter(&lt;span style=&#34;color:#f92672&#34;&gt;||&lt;/span&gt; {
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; input &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; black_box(&lt;span style=&#34;color:#ae81ff&#34;&gt;5000000120510250&lt;/span&gt;);
+
+        assert_eq&lt;span style=&#34;color:#f92672&#34;&gt;!&lt;/span&gt;(log_base(input, &lt;span style=&#34;color:#ae81ff&#34;&gt;10&lt;/span&gt;), &lt;span style=&#34;color:#ae81ff&#34;&gt;16&lt;/span&gt;);
+    });
+}&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;&lt;code&gt;test::black_box&lt;/code&gt; is a magic function that prevents rustc and LLVM calculating
+those function calls at compile-time and converting them into a constant, which
+usually they would (actually, it&amp;rsquo;s not magic, it&amp;rsquo;s just some inline assembly
+that doesn&amp;rsquo;t do anything, since neither rustc nor LLVM will try to optimize
+anything that&amp;rsquo;s been accessed by inline assembly).&lt;/p&gt;
+
+&lt;p&gt;This gives the following results:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-text&#34; data-lang=&#34;text&#34;&gt;test bench_log_base          ... bench:  18 ns/iter (+/- 0)
+test bench_log_base_unrolled ... bench:   5 ns/iter (+/- 0)&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Wait a minute, though, what happens when we give a non-constant value for
+&lt;code&gt;base&lt;/code&gt;?&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;&lt;span style=&#34;color:#75715e&#34;&gt;#[bench]&lt;/span&gt;
+&lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;bench_log_base_nonconstbase&lt;/span&gt;(b: &lt;span style=&#34;color:#66d9ef&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;mut&lt;/span&gt; Bencher) {
+    b.iter(&lt;span style=&#34;color:#f92672&#34;&gt;||&lt;/span&gt; {
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; input &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; black_box(&lt;span style=&#34;color:#ae81ff&#34;&gt;5000000120510250&lt;/span&gt;);
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; base &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; black_box(&lt;span style=&#34;color:#ae81ff&#34;&gt;10&lt;/span&gt;);
+
+        assert_eq&lt;span style=&#34;color:#f92672&#34;&gt;!&lt;/span&gt;(log_base(input, base), &lt;span style=&#34;color:#ae81ff&#34;&gt;16&lt;/span&gt;);
+    });
+}
+
+&lt;span style=&#34;color:#75715e&#34;&gt;#[bench]&lt;/span&gt;
+&lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;bench_log_base_unrolled_nonconstbase&lt;/span&gt;(b: &lt;span style=&#34;color:#66d9ef&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;mut&lt;/span&gt; Bencher) {
+    b.iter(&lt;span style=&#34;color:#f92672&#34;&gt;||&lt;/span&gt; {
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; input &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; black_box(&lt;span style=&#34;color:#ae81ff&#34;&gt;5000000120510250&lt;/span&gt;);
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; base &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; black_box(&lt;span style=&#34;color:#ae81ff&#34;&gt;10&lt;/span&gt;);
+
+        assert_eq&lt;span style=&#34;color:#f92672&#34;&gt;!&lt;/span&gt;(log_base_unrolled(input, base), &lt;span style=&#34;color:#ae81ff&#34;&gt;16&lt;/span&gt;);
+    });
+}&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-text&#34; data-lang=&#34;text&#34;&gt;test bench_log_base_unrolled_nonconstbase ... bench:  37 ns/iter (+/- 1)
+test bench_log_base_nonconstbase          ... bench: 199 ns/iter (+/- 5)&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;They&amp;rsquo;re both much slower! Can we do better? Turns out yes, we can:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;log_base_increasing&lt;/span&gt;(n: &lt;span style=&#34;color:#66d9ef&#34;&gt;usize&lt;/span&gt;, base: &lt;span style=&#34;color:#66d9ef&#34;&gt;usize&lt;/span&gt;) -&amp;gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;usize&lt;/span&gt; {
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;const&lt;/span&gt; UNROLL_COUNT: &lt;span style=&#34;color:#66d9ef&#34;&gt;usize&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;4&lt;/span&gt;;
+
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; premultiplied_base: [_; UNROLL_COUNT] &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; [
+        base,
+        base &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt; base,
+        base &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt; base &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt; base,
+        base &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt; base &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt; base &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt; base,
+    ];
+
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; n &lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt; premultiplied_base[&lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;] { &lt;span style=&#34;color:#66d9ef&#34;&gt;return&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt;; }
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; n &lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt; premultiplied_base[&lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt;] { &lt;span style=&#34;color:#66d9ef&#34;&gt;return&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;2&lt;/span&gt;; }
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; n &lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt; premultiplied_base[&lt;span style=&#34;color:#ae81ff&#34;&gt;2&lt;/span&gt;] { &lt;span style=&#34;color:#66d9ef&#34;&gt;return&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;3&lt;/span&gt;; }
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; n &lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt; premultiplied_base[&lt;span style=&#34;color:#ae81ff&#34;&gt;3&lt;/span&gt;] { &lt;span style=&#34;color:#66d9ef&#34;&gt;return&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;4&lt;/span&gt;; }
+
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;mut&lt;/span&gt; out &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; UNROLL_COUNT &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt;;
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;mut&lt;/span&gt; mul &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; premultiplied_base[UNROLL_COUNT &lt;span style=&#34;color:#f92672&#34;&gt;-&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt;];
+
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;loop&lt;/span&gt; {
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; n &lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt; premultiplied_base[&lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;] &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt; mul { &lt;span style=&#34;color:#66d9ef&#34;&gt;return&lt;/span&gt; out; }
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; n &lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt; premultiplied_base[&lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt;] &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt; mul { &lt;span style=&#34;color:#66d9ef&#34;&gt;return&lt;/span&gt; out &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt;; }
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; n &lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt; premultiplied_base[&lt;span style=&#34;color:#ae81ff&#34;&gt;2&lt;/span&gt;] &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt; mul { &lt;span style=&#34;color:#66d9ef&#34;&gt;return&lt;/span&gt; out &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;2&lt;/span&gt;; }
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; n &lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt; premultiplied_base[&lt;span style=&#34;color:#ae81ff&#34;&gt;3&lt;/span&gt;] &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt; mul { &lt;span style=&#34;color:#66d9ef&#34;&gt;return&lt;/span&gt; out &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;3&lt;/span&gt;; }
+
+        mul &lt;span style=&#34;color:#f92672&#34;&gt;*=&lt;/span&gt; premultiplied_base[UNROLL_COUNT &lt;span style=&#34;color:#f92672&#34;&gt;-&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt;];
+        out &lt;span style=&#34;color:#f92672&#34;&gt;+=&lt;/span&gt; UNROLL_COUNT;
+    }
+}
+
+&lt;span style=&#34;color:#75715e&#34;&gt;#[bench]&lt;/span&gt;
+&lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;bench_log_base_increasing&lt;/span&gt;(b: &lt;span style=&#34;color:#66d9ef&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;mut&lt;/span&gt; Bencher) {
+    b.iter(&lt;span style=&#34;color:#f92672&#34;&gt;||&lt;/span&gt; {
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; input &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; black_box(&lt;span style=&#34;color:#ae81ff&#34;&gt;5000000120510250&lt;/span&gt;);
+
+        assert_eq&lt;span style=&#34;color:#f92672&#34;&gt;!&lt;/span&gt;(log_base_increasing(input, &lt;span style=&#34;color:#ae81ff&#34;&gt;10&lt;/span&gt;), &lt;span style=&#34;color:#ae81ff&#34;&gt;16&lt;/span&gt;);
+    });
+}
+
+&lt;span style=&#34;color:#75715e&#34;&gt;#[bench]&lt;/span&gt;
+&lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;bench_log_base_increasing_nonconstbase&lt;/span&gt;(b: &lt;span style=&#34;color:#66d9ef&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;mut&lt;/span&gt; Bencher) {
+    b.iter(&lt;span style=&#34;color:#f92672&#34;&gt;||&lt;/span&gt; {
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; input &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; black_box(&lt;span style=&#34;color:#ae81ff&#34;&gt;5000000120510250&lt;/span&gt;);
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; base &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; black_box(&lt;span style=&#34;color:#ae81ff&#34;&gt;10&lt;/span&gt;);
+
+        assert_eq&lt;span style=&#34;color:#f92672&#34;&gt;!&lt;/span&gt;(log_base_increasing(input, base), &lt;span style=&#34;color:#ae81ff&#34;&gt;16&lt;/span&gt;);
+    });
+}&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Let&amp;rsquo;s check out the results now:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-text&#34; data-lang=&#34;text&#34;&gt;test bench_log_base                         ... bench:  18 ns/iter (+/- 0)
+test bench_log_base_nonconstbase            ... bench: 199 ns/iter (+/- 5)
+
+test bench_log_base_unrolled                ... bench:   5 ns/iter (+/- 0)
+test bench_log_base_unrolled_nonconstbase   ... bench:  37 ns/iter (+/- 1)
+
+test bench_log_base_increasing              ... bench:   6 ns/iter (+/- 0)
+test bench_log_base_increasing_nonconstbase ... bench:   8 ns/iter (+/- 1)&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Turns out the compiler was doing something sneaky: it can optimize integer
+division by a constant &lt;a href=&#34;http://embeddedgurus.com/stack-overflow/2009/06/division-of-integers-by-constants/&#34;&gt;into a multiplication combined with a shift&lt;/a&gt;.
+When it could no longer fold the constant into the function it slowed down
+considerably. It&amp;rsquo;s ok to rely on const-folding if it allows you to gain
+considerable speedups and you know that the function will usually be called with
+constant arguments, but be careful. The things to look out for are if statements
+and integer division, both of which can be much slower with non-constant values
+compared to constants.&lt;/p&gt;
+
+&lt;p&gt;The fastest method by far converts to an &lt;code&gt;f64&lt;/code&gt;, calls &lt;code&gt;.log(base)&lt;/code&gt; on that, and
+then converts back. It doesn&amp;rsquo;t work for large numbers, however, because of loss
+of precision. This is probably a good time to note that although adding and
+multiplying integers is faster than doing the same for floats, for code that
+does division by a non-constant value or something more complex like
+trigonometry, you should definitely use floats. The compiler can&amp;rsquo;t do the
+conversion for you - it won&amp;rsquo;t apply optimizations that make your code less
+precise - but you can check for areas where this would be an improvement and
+make the change manually.&lt;/p&gt;
+
+&lt;h2 id=&#34;assert-conditions-beforehand&#34;&gt;&lt;code&gt;assert!&lt;/code&gt; conditions beforehand&lt;/h2&gt;
+
+&lt;p&gt;If you want to reduce the number of implicit asserts that get compiled into the
+code, then instead of this:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;do_something_with_array&lt;/span&gt;(array: &lt;span style=&#34;color:#66d9ef&#34;&gt;&amp;amp;&lt;/span&gt;[&lt;span style=&#34;color:#66d9ef&#34;&gt;u8&lt;/span&gt;]) -&amp;gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;u8&lt;/span&gt; {
+    array[&lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;] &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; array[&lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt;] &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; array[&lt;span style=&#34;color:#ae81ff&#34;&gt;2&lt;/span&gt;] &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; array[&lt;span style=&#34;color:#ae81ff&#34;&gt;3&lt;/span&gt;] &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; array[&lt;span style=&#34;color:#ae81ff&#34;&gt;4&lt;/span&gt;] &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; array[&lt;span style=&#34;color:#ae81ff&#34;&gt;5&lt;/span&gt;]
+}&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Do this:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;do_something_with_array&lt;/span&gt;(array: &lt;span style=&#34;color:#66d9ef&#34;&gt;&amp;amp;&lt;/span&gt;[&lt;span style=&#34;color:#66d9ef&#34;&gt;u8&lt;/span&gt;]) -&amp;gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;u8&lt;/span&gt; {
+    assert&lt;span style=&#34;color:#f92672&#34;&gt;!&lt;/span&gt;(array.len &lt;span style=&#34;color:#f92672&#34;&gt;&amp;gt;=&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;5&lt;/span&gt;);
+    array[&lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;] &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; array[&lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt;] &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; array[&lt;span style=&#34;color:#ae81ff&#34;&gt;2&lt;/span&gt;] &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; array[&lt;span style=&#34;color:#ae81ff&#34;&gt;3&lt;/span&gt;] &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; array[&lt;span style=&#34;color:#ae81ff&#34;&gt;4&lt;/span&gt;] &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; array[&lt;span style=&#34;color:#ae81ff&#34;&gt;5&lt;/span&gt;]
+}&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;This allows LLVM to realize that the later asserts are unreachable and elides
+them. This is useful for any code that may assert multiple different qualities
+about the same data, but is especially useful for indexing since we know that
+if &lt;code&gt;array[n]&lt;/code&gt; succeeds then &lt;code&gt;array[n - 1]&lt;/code&gt; will succeed too. This is similar to
+the point about fixed-length arrays in the previous section.&lt;/p&gt;
+
+&lt;p&gt;Essentially, try to consolidate checks into a single &lt;code&gt;assert!&lt;/code&gt;. This means that
+the later checks become statically unreachable. If LLVM/Rust still don&amp;rsquo;t
+optimize it away you can switch to using the unsafe indexing methods while
+ensuring that they&amp;rsquo;re still safe. This tip is shamelessly stolen from &lt;a href=&#34;https://www.reddit.com/r/rust/comments/6anp0d/suggestion_for_a_new_rustc_optimization/dhfzp93/&#34;&gt;a comment
+on /r/rust&lt;/a&gt;.&lt;/p&gt;
+
+&lt;h2 id=&#34;use-link-time-optimization&#34;&gt;Use link-time optimization&lt;/h2&gt;
+
+&lt;p&gt;Normally, Rust can only inline functions that are either defined in-crate or,
+in the case of functions in other libraries, have &lt;code&gt;#[inline]&lt;/code&gt; specified. LTO
+allows the compiler to inline cross-crate, at the cost of a compile-time speed
+penalty. I am of the opinion that compile times only matter for debug builds, so
+that&amp;rsquo;s a tradeoff I&amp;rsquo;m willing to make. As with everything else here, profile and
+check that the tradeoff is worthwhile.&lt;/p&gt;
+
+&lt;h2 id=&#34;don-t-use-inline-always&#34;&gt;Don&amp;rsquo;t use &lt;code&gt;#[inline(always)]&lt;/code&gt;&lt;/h2&gt;
+
+&lt;p&gt;&lt;code&gt;#[inline(always)]&lt;/code&gt; feels good as a performance hint, but the truth is that
+optimizing compilers are really good at working out when a function would
+benefit from being inlined, and Rust isn&amp;rsquo;t constrained to the slower
+standardized C calling convention and can use &lt;code&gt;fastcc&lt;/code&gt;, making function calls
+extremely cheap. You&amp;rsquo;re more likely to cause the size of your executable to
+bloat. This takes up more space on your hard drive, of course, but that&amp;rsquo;s not
+too much of a problem. If you have even a single bundled asset like images or
+audio they will likely dwarf the size of your executable.&lt;/p&gt;
+
+&lt;p&gt;The real issue here is that it can make your program no longer fit in the CPU&amp;rsquo;s
+instruction cache. The CPU will only have to go to RAM for its instructions when
+functions are called with instructions outside of the current cache line. The
+larger your binary is, the more likely this is, and the more functions are
+inlined, the larger your binary is. It&amp;rsquo;s not the end of the world to have a
+large binary, but unless you&amp;rsquo;re really certain that something will be improved
+by manually marking it as inline, and you have benchmarks to back that up,
+it&amp;rsquo;s just as likely that you&amp;rsquo;ll slow a program down with careless inlining than
+to speed it up.&lt;/p&gt;
+
+&lt;p&gt;So now I&amp;rsquo;ve scared you off inlining, let&amp;rsquo;s talk about when you should explicitly
+add inlining annotations. Small functions that are called often are a good
+target for inlining. &lt;code&gt;Iterator::next&lt;/code&gt;, for example, or &lt;code&gt;Deref::deref&lt;/code&gt;. The
+overhead from calling these functions may be larger than the time it takes to
+run the function itself. These are likely to be automatically inlined when
+called internally, but marking these as &lt;code&gt;#[inline]&lt;/code&gt; will allow users of your
+library to inline them too, even if they don&amp;rsquo;t use LTO. Only functions marked
+&lt;code&gt;#[inline]&lt;/code&gt; will be considered for cross-crate inlining, but that means the
+definition has to be stored in the compiled library, causing bloat and
+increasing compile times. &lt;code&gt;#[inline(always)]&lt;/code&gt; is even more niche, but it&amp;rsquo;s
+sometimes nice to ensure that a tiny function will be inlined, or as a kind of
+documentation that the function call is free for if someone comes along and
+tries to manually inline it to improve performance. It really is very rare that
+you would want to do this, though, and it&amp;rsquo;s best to just trust the compiler.&lt;/p&gt;
+
+&lt;p&gt;The other class of functions that are good targets for annotating inlining are
+ones that you know to often be called with constant parameters. We go into this
+later on, but &lt;code&gt;{integer}::from_str_radix&lt;/code&gt; is an exellent example of this. Most
+uses of this function will have a constant as the second parameter, and so by
+judicious use of &lt;code&gt;#[inline]&lt;/code&gt; we can prevent branching and expensive operations
+like division for the consumers of our library. It&amp;rsquo;s not worth losing sleep
+over though, since they could just use link-time optimization if they need to
+squeeze out every last drop of performance.&lt;/p&gt;
+
+&lt;p&gt;Also, the compiler does really get it wrong sometimes, and can miss out on
+inlining opportunities that would improve code speed. However, only add
+&lt;code&gt;#[inline(always)]&lt;/code&gt; annotation if you can prove with benchmarks that it improves
+the speed, and adding these annotations is a bit of a dark art. You effort is
+probably better spent elsewhere.&lt;/p&gt;
+
+&lt;p&gt;If you want to reduce the size of your code, you can try using
+&lt;code&gt;panic = &amp;quot;abort&amp;quot;&lt;/code&gt;. This removes the &amp;ldquo;landing pads&amp;rdquo; that allow Rust to show a
+nice stack trace after a panic, and causes any panic to end the program
+instantly. I have legitimately seen non-trivial speedups on benchmarks for the
+&lt;code&gt;ion&lt;/code&gt; shell after adding this option to the release build, and I can only
+attribute it to making more code fit in the instruction cache. I have not tried
+it with many other programs, but it would probably only affect medium to large
+projects. Try it out on your codebase, it&amp;rsquo;s as easy as adding one line to the
+&lt;code&gt;Cargo.toml&lt;/code&gt; and it may improve your code&amp;rsquo;s speed.&lt;/p&gt;
+
+&lt;h2 id=&#34;parallelize-but-not-how-you-think&#34;&gt;Parallelize, but not how you think&lt;/h2&gt;
+
+&lt;p&gt;There&amp;rsquo;s an absolutely amazing library for Haskell called &lt;a href=&#34;https://github.com/facebook/haxl&#34;&gt;Haxl&lt;/a&gt;, that
+automatically tracks the data dependencies of your network requests and batches
+them and runs them asynchronously as long as they don&amp;rsquo;t overlap. It&amp;rsquo;s something
+that shows the power of computational abstractions like monads and it&amp;rsquo;s not
+something that has a, ahem, &lt;em&gt;parallel&lt;/em&gt; in any other language, as far as I know.
+At least, not for IO. We&amp;rsquo;ve had this exact ability in the CPU for a long, long
+time. The CPU tracks the data dependencies of computations and will parallelize
+them wherever possible.&lt;/p&gt;
+
+&lt;p&gt;The reason data dependencies matter is that the CPU doesn&amp;rsquo;t just execute one
+instruction at a time. As long as two instructions don&amp;rsquo;t share a register they
+can safely be run simultaneously, so the CPU does so. This is essentially free
+parallelism without the need for locks, work queues or anything that affects
+your architecture at all, so you would be crazy not to take advantage of it.&lt;/p&gt;
+
+&lt;p&gt;Parallelizable computation also lends itself well to autovectorization, which is
+the process where the compiler realizes that you&amp;rsquo;re doing the same thing to
+multiple different values and converts it to a special instruction that, well,
+does the same thing to multiple different values.&lt;/p&gt;
+
+&lt;p&gt;For example, the compiler could translate the following numerical code:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;(a1 &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; a2) &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; (b1 &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; b2) &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; (c1 &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; c2) &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; (d1 &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; d2)&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;into just one instruction that executes all four subexpressions as fast as a
+single addition.&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-text&#34; data-lang=&#34;text&#34;&gt;%intermediate-value = add-vectors [%a1 %b1 %c1 %d1] [%a2 %b2 %c2 %d2]
+sum-parts %intermediate-value&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h2 id=&#34;a-case-study&#34;&gt;A case study&lt;/h2&gt;
+
+&lt;p&gt;Let&amp;rsquo;s write a version of &lt;code&gt;usize::from_str_radix&lt;/code&gt; that&amp;rsquo;s about 30% faster than
+the one in the standard library.&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;&lt;span style=&#34;color:#75715e&#34;&gt;// We&amp;#39;re redefining these here since they&amp;#39;re private in the stdlib
+&lt;/span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;#[derive(Debug, Clone, PartialEq, Eq)]&lt;/span&gt;
+&lt;span style=&#34;color:#66d9ef&#34;&gt;struct&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;ParseIntError&lt;/span&gt; {
+    kind: &lt;span style=&#34;color:#a6e22e&#34;&gt;IntErrorKind&lt;/span&gt;,
+}
+
+&lt;span style=&#34;color:#75715e&#34;&gt;#[derive(Debug, Clone, PartialEq, Eq)]&lt;/span&gt;
+&lt;span style=&#34;color:#66d9ef&#34;&gt;enum&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;IntErrorKind&lt;/span&gt; {
+    Empty,
+    InvalidDigit,
+    Overflow,
+    Underflow,
+}
+
+&lt;span style=&#34;color:#75715e&#34;&gt;#[inline]&lt;/span&gt;
+&lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;from_str_radix&lt;/span&gt;(input: &lt;span style=&#34;color:#66d9ef&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;str&lt;/span&gt;, radix: &lt;span style=&#34;color:#66d9ef&#34;&gt;usize&lt;/span&gt;) -&amp;gt; Result&lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;usize&lt;/span&gt;, ParseIntError&lt;span style=&#34;color:#f92672&#34;&gt;&amp;gt;&lt;/span&gt; {
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;to_digit_ascii&lt;/span&gt;(ascii: &lt;span style=&#34;color:#66d9ef&#34;&gt;u8&lt;/span&gt;, radix: &lt;span style=&#34;color:#66d9ef&#34;&gt;usize&lt;/span&gt;) -&amp;gt; Result&lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;usize&lt;/span&gt;, ParseIntError&lt;span style=&#34;color:#f92672&#34;&gt;&amp;gt;&lt;/span&gt; {
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; decimal_digit &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; ascii.wrapping_sub(&lt;span style=&#34;color:#e6db74&#34;&gt;b&amp;#39;0&amp;#39;&lt;/span&gt;);
+
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; radix &lt;span style=&#34;color:#f92672&#34;&gt;&amp;gt;&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;10&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&amp;amp;&lt;/span&gt; decimal_digit &lt;span style=&#34;color:#f92672&#34;&gt;&amp;gt;&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;9&lt;/span&gt; {
+            &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; out &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; (ascii &lt;span style=&#34;color:#f92672&#34;&gt;|&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;32&lt;/span&gt;).wrapping_sub(&lt;span style=&#34;color:#e6db74&#34;&gt;b&amp;#39;a&amp;#39;&lt;/span&gt;) &lt;span style=&#34;color:#66d9ef&#34;&gt;as&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;usize&lt;/span&gt;;
+
+            &lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; out &lt;span style=&#34;color:#f92672&#34;&gt;&amp;gt;&lt;/span&gt; radix &lt;span style=&#34;color:#f92672&#34;&gt;-&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;10&lt;/span&gt; {
+                Err(ParseIntError { kind: &lt;span style=&#34;color:#a6e22e&#34;&gt;IntErrorKind&lt;/span&gt;::InvalidDigit })
+            } &lt;span style=&#34;color:#66d9ef&#34;&gt;else&lt;/span&gt; {
+                Ok(out &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;10&lt;/span&gt;)
+            }
+        } &lt;span style=&#34;color:#66d9ef&#34;&gt;else&lt;/span&gt; {
+            &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; decimal_digit &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; decimal_digit &lt;span style=&#34;color:#66d9ef&#34;&gt;as&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;usize&lt;/span&gt;;
+            &lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; decimal_digit &lt;span style=&#34;color:#f92672&#34;&gt;&amp;gt;&lt;/span&gt; radix {
+                Err(ParseIntError { kind: &lt;span style=&#34;color:#a6e22e&#34;&gt;IntErrorKind&lt;/span&gt;::InvalidDigit })
+            } &lt;span style=&#34;color:#66d9ef&#34;&gt;else&lt;/span&gt; {
+                Ok(decimal_digit)
+            }
+        }
+    }
+
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; radix &lt;span style=&#34;color:#f92672&#34;&gt;&amp;gt;&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;36&lt;/span&gt; {
+        panic&lt;span style=&#34;color:#f92672&#34;&gt;!&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;from_str_radix: radix is too high (maximum 36)&amp;#34;&lt;/span&gt;);
+    }
+
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; bytes &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; input.as_bytes();
+
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; bytes.len() &lt;span style=&#34;color:#f92672&#34;&gt;==&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt; {
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;return&lt;/span&gt; Err(
+            ParseIntError { kind: &lt;span style=&#34;color:#a6e22e&#34;&gt;IntErrorKind&lt;/span&gt;::Empty }
+        );
+    }
+
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; bytes &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;match&lt;/span&gt; bytes[&lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;] {
+        &lt;span style=&#34;color:#e6db74&#34;&gt;b&amp;#39;+&amp;#39;&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;=&amp;gt;&lt;/span&gt; { &lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;bytes[&lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt;..] },
+        &lt;span style=&#34;color:#e6db74&#34;&gt;b&amp;#39;-&amp;#39;&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;=&amp;gt;&lt;/span&gt; { &lt;span style=&#34;color:#66d9ef&#34;&gt;return&lt;/span&gt; Err(ParseIntError { kind: &lt;span style=&#34;color:#a6e22e&#34;&gt;IntErrorKind&lt;/span&gt;::Underflow }) },
+        _ &lt;span style=&#34;color:#f92672&#34;&gt;=&amp;gt;&lt;/span&gt; bytes,
+    };
+
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;mut&lt;/span&gt; mul &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; radix;
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;mut&lt;/span&gt; index &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; bytes.len() &lt;span style=&#34;color:#f92672&#34;&gt;-&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt;;
+
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;mut&lt;/span&gt; output &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; to_digit_ascii(bytes[index], radix)&lt;span style=&#34;color:#f92672&#34;&gt;?&lt;/span&gt;;
+
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;for&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;byte &lt;span style=&#34;color:#66d9ef&#34;&gt;in&lt;/span&gt; bytes[..index].iter().rev() {
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; digit &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; to_digit_ascii(byte, radix)&lt;span style=&#34;color:#f92672&#34;&gt;?&lt;/span&gt;;
+
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; next_output &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; output.wrapping_add(digit &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt; mul);
+
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; output &lt;span style=&#34;color:#f92672&#34;&gt;&amp;gt;&lt;/span&gt; next_output {
+            &lt;span style=&#34;color:#66d9ef&#34;&gt;return&lt;/span&gt; Err(
+                ParseIntError { kind: &lt;span style=&#34;color:#a6e22e&#34;&gt;IntErrorKind&lt;/span&gt;::Overflow }
+            );
+        }
+
+        mul &lt;span style=&#34;color:#f92672&#34;&gt;*=&lt;/span&gt; radix;
+        output &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; next_output;
+    }
+
+    Ok(output)
+}&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;I explicitly use &lt;code&gt;wrapping_*&lt;/code&gt; functions not for optimization purposes (because
+overflow checks are removed at runtime), but because overflow is required for
+correct behaviour. You&amp;rsquo;ll notice some optimizations here:&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;We start at the end and work backwards, keeping a &amp;ldquo;mul&amp;rdquo; counter. Originally I
+wrote a version of this that works forwards and multiplies &lt;code&gt;output&lt;/code&gt; by radix
+each loop but the backwards method is 10% faster. This seems to be due to
+better instruction-level parallelism. The multiplications can be parallelized
+and only the addition relies on the previous iteration&amp;rsquo;s value for &lt;code&gt;output&lt;/code&gt;,
+and addition is much faster.&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;Any folding operations can be improved in this way by exploiting the
+  algebraic laws (in this case, the distributive law) to improve the number of
+  operations that can be done in parallel.
+* We rely on overflow to test &lt;code&gt;A &amp;lt; x &amp;lt; B&lt;/code&gt; comparisons. This is only useful here
+  because we already need the &lt;code&gt;x - A&lt;/code&gt; value, so we&amp;rsquo;re saving an extra comparison
+  and a bitwise and. In most code &lt;code&gt;A &amp;lt; x &amp;amp;&amp;amp; x &amp;lt; B&lt;/code&gt; is as cheap or cheaper than
+  &lt;code&gt;x - A &amp;lt; B&lt;/code&gt; with overflow.
+* We use &lt;code&gt;| 32&lt;/code&gt; to unify the codepaths for upper- and lowercase letters,
+  reducing the number of comparisons we need to do.
+* We don&amp;rsquo;t do &lt;code&gt;output + digit * mul&lt;/code&gt; when &lt;code&gt;output == 0&lt;/code&gt; and &lt;code&gt;mul == 1&lt;/code&gt;. This
+  seems to be consistently 1ns faster, but it&amp;rsquo;s possible that this doesn&amp;rsquo;t make
+  a difference and the 1ns speedup I&amp;rsquo;m seeing is pure luck. I reran the
+  benchmarks both with and without the change multiple times and saw a
+  consistent difference but this doesn&amp;rsquo;t rule out luck. This is the problem with
+  microbenchmarks, when the difference becomes small enough you can&amp;rsquo;t tell
+  whether you&amp;rsquo;re really making it faster.
+* We use Rust&amp;rsquo;s safe iterator interface, which is as fast as the C idiom of
+  storing a &amp;ldquo;start&amp;rdquo; and &amp;ldquo;end&amp;rdquo; pointer so you can check whether the loop is
+  finished with a simple &lt;code&gt;==&lt;/code&gt;. If you ever hear someone say &amp;ldquo;Rust&amp;rsquo;s safety
+  guarantees are useless because you need to drop down to unsafe to get any real
+  speed&amp;rdquo; (I&amp;rsquo;ve seen this almost verbatim on Hacker News before) you can show
+  them this.
+* We don&amp;rsquo;t rely on const-folding in order to make our code fast, but it does run
+  faster with a constant value for &lt;code&gt;radix&lt;/code&gt;. Therefore, we add &lt;code&gt;#[inline]&lt;/code&gt; to
+  allow downstream crates to apply const-folding too.&lt;/p&gt;
+
+&lt;p&gt;The method I used for this is the basic method you should use for any
+optimization work: write a representative benchmark and then progressively tweak
+and rerun benchmarks until you can&amp;rsquo;t shave off any more cycles. Doing this for
+pure functions is much easier, so one of the first things you should do to
+optimize any function that&amp;rsquo;s called in a tight loop is to make it pure. This
+avoids indirect writes and reads (reads and writes to places in memory that are
+likely to be outside cache lines) and makes benchmarking much, much easier. If
+you use test-driven development for reliability, this is the equivalent for
+performance.&lt;/p&gt;
+
+&lt;p&gt;Extending this to work on signed integer types is an exercise for the reader.
+Tip: unlike C, you can rely on signed integers overflowing with 2&amp;rsquo;s complement
+arithmetic.&lt;/p&gt;
+
+&lt;p&gt;Here are the functions I used to benchmark the code:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;&lt;span style=&#34;color:#75715e&#34;&gt;#[bench]&lt;/span&gt;
+&lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;bench_from_str&lt;/span&gt;(b: &lt;span style=&#34;color:#66d9ef&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;mut&lt;/span&gt; Bencher) {
+    b.iter(&lt;span style=&#34;color:#f92672&#34;&gt;||&lt;/span&gt; {
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; input &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; black_box(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;1235112512&amp;#34;&lt;/span&gt;);
+        assert_eq&lt;span style=&#34;color:#f92672&#34;&gt;!&lt;/span&gt;(from_str_radix(input, &lt;span style=&#34;color:#ae81ff&#34;&gt;10&lt;/span&gt;), Ok(&lt;span style=&#34;color:#ae81ff&#34;&gt;1235112512&lt;/span&gt;));
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; input &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; black_box(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;FFaf125A&amp;#34;&lt;/span&gt;);
+        assert_eq&lt;span style=&#34;color:#f92672&#34;&gt;!&lt;/span&gt;(from_str_radix(input, &lt;span style=&#34;color:#ae81ff&#34;&gt;16&lt;/span&gt;), Ok(&lt;span style=&#34;color:#ae81ff&#34;&gt;0xFFaf125A&lt;/span&gt;));
+    });
+}
+
+&lt;span style=&#34;color:#75715e&#34;&gt;#[bench]&lt;/span&gt;
+&lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;bench_from_str_native&lt;/span&gt;(b: &lt;span style=&#34;color:#66d9ef&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;mut&lt;/span&gt; Bencher) {
+    b.iter(&lt;span style=&#34;color:#f92672&#34;&gt;||&lt;/span&gt; {
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; input &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; black_box(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;1235112512&amp;#34;&lt;/span&gt;);
+        assert_eq&lt;span style=&#34;color:#f92672&#34;&gt;!&lt;/span&gt;(&lt;span style=&#34;color:#66d9ef&#34;&gt;usize&lt;/span&gt;::from_str_radix(input, &lt;span style=&#34;color:#ae81ff&#34;&gt;10&lt;/span&gt;), Ok(&lt;span style=&#34;color:#ae81ff&#34;&gt;1235112512&lt;/span&gt;));
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; input &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; black_box(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;FFaf125A&amp;#34;&lt;/span&gt;);
+        assert_eq&lt;span style=&#34;color:#f92672&#34;&gt;!&lt;/span&gt;(&lt;span style=&#34;color:#66d9ef&#34;&gt;usize&lt;/span&gt;::from_str_radix(input, &lt;span style=&#34;color:#ae81ff&#34;&gt;16&lt;/span&gt;), Ok(&lt;span style=&#34;color:#ae81ff&#34;&gt;0xFFaf125A&lt;/span&gt;));
+    });
+}
+
+&lt;span style=&#34;color:#75715e&#34;&gt;#[bench]&lt;/span&gt;
+&lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;bench_from_str_nonconstradix&lt;/span&gt;(b: &lt;span style=&#34;color:#66d9ef&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;mut&lt;/span&gt; Bencher) {
+    b.iter(&lt;span style=&#34;color:#f92672&#34;&gt;||&lt;/span&gt; {
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; input &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; black_box(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;1235112512&amp;#34;&lt;/span&gt;);
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; radix &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; black_box(&lt;span style=&#34;color:#ae81ff&#34;&gt;10&lt;/span&gt;);
+        assert_eq&lt;span style=&#34;color:#f92672&#34;&gt;!&lt;/span&gt;(from_str_radix(input, radix), Ok(&lt;span style=&#34;color:#ae81ff&#34;&gt;1235112512&lt;/span&gt;));
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; input &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; black_box(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;FFaf125A&amp;#34;&lt;/span&gt;);
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; radix &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; black_box(&lt;span style=&#34;color:#ae81ff&#34;&gt;16&lt;/span&gt;);
+        assert_eq&lt;span style=&#34;color:#f92672&#34;&gt;!&lt;/span&gt;(from_str_radix(input, radix), Ok(&lt;span style=&#34;color:#ae81ff&#34;&gt;0xFFaf125A&lt;/span&gt;));
+    });
+}
+
+&lt;span style=&#34;color:#75715e&#34;&gt;#[bench]&lt;/span&gt;
+&lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;bench_from_str_native_nonconstradix&lt;/span&gt;(b: &lt;span style=&#34;color:#66d9ef&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;mut&lt;/span&gt; Bencher) {
+    b.iter(&lt;span style=&#34;color:#f92672&#34;&gt;||&lt;/span&gt; {
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; input &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; black_box(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;1235112512&amp;#34;&lt;/span&gt;);
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; radix &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; black_box(&lt;span style=&#34;color:#ae81ff&#34;&gt;10&lt;/span&gt;);
+        assert_eq&lt;span style=&#34;color:#f92672&#34;&gt;!&lt;/span&gt;(&lt;span style=&#34;color:#66d9ef&#34;&gt;usize&lt;/span&gt;::from_str_radix(input, radix), Ok(&lt;span style=&#34;color:#ae81ff&#34;&gt;1235112512&lt;/span&gt;));
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; input &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; black_box(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;FFaf125A&amp;#34;&lt;/span&gt;);
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; radix &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; black_box(&lt;span style=&#34;color:#ae81ff&#34;&gt;16&lt;/span&gt;);
+        assert_eq&lt;span style=&#34;color:#f92672&#34;&gt;!&lt;/span&gt;(&lt;span style=&#34;color:#66d9ef&#34;&gt;usize&lt;/span&gt;::from_str_radix(input, radix), Ok(&lt;span style=&#34;color:#ae81ff&#34;&gt;0xFFaf125A&lt;/span&gt;));
+    });
+}
+
+&lt;span style=&#34;color:#75715e&#34;&gt;#[bench]&lt;/span&gt;
+&lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;bench_from_str_1char&lt;/span&gt;(b: &lt;span style=&#34;color:#66d9ef&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;mut&lt;/span&gt; Bencher) {
+    b.iter(&lt;span style=&#34;color:#f92672&#34;&gt;||&lt;/span&gt; {
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; input &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; black_box(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;1&amp;#34;&lt;/span&gt;);
+        assert_eq&lt;span style=&#34;color:#f92672&#34;&gt;!&lt;/span&gt;(from_str_radix(input, &lt;span style=&#34;color:#ae81ff&#34;&gt;10&lt;/span&gt;), Ok(&lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt;));
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; input &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; black_box(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;F&amp;#34;&lt;/span&gt;);
+        assert_eq&lt;span style=&#34;color:#f92672&#34;&gt;!&lt;/span&gt;(from_str_radix(input, &lt;span style=&#34;color:#ae81ff&#34;&gt;16&lt;/span&gt;), Ok(&lt;span style=&#34;color:#ae81ff&#34;&gt;0xF&lt;/span&gt;));
+    });
+}
+
+&lt;span style=&#34;color:#75715e&#34;&gt;#[bench]&lt;/span&gt;
+&lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;bench_from_str_native_1char&lt;/span&gt;(b: &lt;span style=&#34;color:#66d9ef&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;mut&lt;/span&gt; Bencher) {
+    b.iter(&lt;span style=&#34;color:#f92672&#34;&gt;||&lt;/span&gt; {
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; input &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; black_box(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;1&amp;#34;&lt;/span&gt;);
+        assert_eq&lt;span style=&#34;color:#f92672&#34;&gt;!&lt;/span&gt;(&lt;span style=&#34;color:#66d9ef&#34;&gt;usize&lt;/span&gt;::from_str_radix(input, &lt;span style=&#34;color:#ae81ff&#34;&gt;10&lt;/span&gt;), Ok(&lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt;));
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; input &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; black_box(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;F&amp;#34;&lt;/span&gt;);
+        assert_eq&lt;span style=&#34;color:#f92672&#34;&gt;!&lt;/span&gt;(&lt;span style=&#34;color:#66d9ef&#34;&gt;usize&lt;/span&gt;::from_str_radix(input, &lt;span style=&#34;color:#ae81ff&#34;&gt;16&lt;/span&gt;), Ok(&lt;span style=&#34;color:#ae81ff&#34;&gt;0xF&lt;/span&gt;));
+    });
+}&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Results:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-text&#34; data-lang=&#34;text&#34;&gt;test bench_from_str                      ... bench:          22 ns/iter (+/- 7)
+test bench_from_str_native               ... bench:          36 ns/iter (+/- 0)
+test bench_from_str_nonconstradix        ... bench:          26 ns/iter (+/- 0)
+test bench_from_str_native_nonconstradix ... bench:          39 ns/iter (+/- 0)
+test bench_from_str_1char                ... bench:           5 ns/iter (+/- 0)
+test bench_from_str_native_1char         ... bench:          13 ns/iter (+/- 0)&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Something I&amp;rsquo;ve noticed with benchmarks below 1ms is that it can take some time
+to &amp;ldquo;spin up&amp;rdquo; the CPU. Occasionally the first benchmark in a set will take
+20-30ns longer than the ones after it. If you duplicate the benchmark verbatim
+and take the number with the lowest variance this avoids the issue. I think this
+is due to the CPU needing to gather information in order to do proper branch
+prediction. Ideally you&amp;rsquo;d just not do micro-benchmarks, but some functions do
+legitimately call for it. Don&amp;rsquo;t trust a benchmark, especially a microbenchmark,
+until you&amp;rsquo;ve rerun it multiple times.&lt;/p&gt;
+
+&lt;p&gt;When I reran this particular benchmark (at least 10 times in total, not
+including the benchmarks I ran while editing the code) to ensure that the
+numbers were stable, and although the averages are extremely stable (the native
+one sometimes was slightly slower, the 36ns value above is what I see most of
+the time), the variances are mostly 0-3ns with spikes of 13-26ns. I don&amp;rsquo;t have a
+good explanation for this, expect a follow-up post with tips on writing better
+benchmarks.&lt;/p&gt;
+
+&lt;p&gt;This is a perfect example of why low-level optimization is important, since this
+is exactly the kind of function that could be used hundreds of thousands of
+times in parsers of textual data and a 10ns speedup here could lead to
+meaningful improvements over the life of the program. It&amp;rsquo;s also an example of
+why you should avoid low-level optimization when possible. The original stdlib
+implementation of this function isn&amp;rsquo;t the most idiomatic code, but it&amp;rsquo;s
+significantly more readable than this. Having said that, though, it&amp;rsquo;s a
+testament to Rust&amp;rsquo;s commitment to zero-cost abstractions that you can write
+mostly-idiomatic, safe code and have it perform as well as equivalent C/C++ code
+that would require use of unsafe pointer arithmetic.&lt;/p&gt;
+
+&lt;h2 id=&#34;wrapping-up&#34;&gt;Wrapping up&lt;/h2&gt;
+
+&lt;p&gt;If I had to sum the trick to optimization up in a pithy QotW-ready snippet it
+would be this:&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;The fastest code is code that doesn&amp;rsquo;t run at all, the second-fastest code is
+code that never stops running.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;Ideally, you want to do less work, and if you&amp;rsquo;re doing the minimum amount of
+work you want to reduce the amount of time the CPU spends waiting around.&lt;/p&gt;
+
+&lt;p&gt;If you want more Rustic performance tips with more numbers I would consider
+&lt;a href=&#34;http://blog.burntsushi.net/ripgrep/&#34;&gt;BurntSushi&amp;rsquo;s excellent post-mortem of ripgrep&lt;/a&gt; required
+reading for anyone wanting to write fast software (it was the thing that
+originally sent me down this deep, deep rabbit hole). For more general systems
+language-y points, check out Andrei Alexandrescu&amp;rsquo;s talk &lt;a href=&#34;https://www.youtube.com/watch?v=o4-CwDo2zpg&#34;&gt;&amp;ldquo;Fastware&amp;rdquo;&lt;/a&gt;,
+from which the &lt;code&gt;from_str_radix&lt;/code&gt; and &lt;code&gt;log_base&lt;/code&gt; code was adapted. A lot of the
+points in this article are expansions upon points behind one of those two links.&lt;/p&gt;
+
+&lt;p&gt;I hope that whether you&amp;rsquo;re a soft-shell Rustacean or a grizzled veteran, this
+has given you a better sense of when some code may be poorly performing, and
+what to do about it. Go make things go vroom.&lt;/p&gt;
+</description>
+    </item>
+    
+  </channel>
+</rss>
