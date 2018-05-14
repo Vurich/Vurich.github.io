@@ -371,13 +371,13 @@ window.onload = ready;
     ;; ...and then immediately back into memory
     ;; This is done by the Rust compiler. There is a way to avoid
     ;; this happening but I&#39;ll get to that later
-    ;; These four are the input array
+    ;; These four are the first input array
     movq   %rax, 0x38(%rsp)
     movq   %rcx, 0x30(%rsp)
     movq   %rdx, 0x28(%rsp)
     movq   %rsi, 0x20(%rsp)
     ;; These four are the output array, which is initialised to be
-    ;; the same as the input array.
+    ;; the same as the second input array.
     movq   %r8,  0x18(%rsp)
     movq   %r9,  0x10(%rsp)
     movq   %r10, 0x8(%rsp)
