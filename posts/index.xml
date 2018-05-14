@@ -458,7 +458,7 @@
     retq   &lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 &lt;p&gt;So as you can see from my comments, there are a lot of inefficiencies in this code. We multiply on variables from memory instead of from registers, we do superfluous stores and loads, also the CPU has to do many stores and loads before even getting to the &amp;ldquo;real&amp;rdquo; code (the multiply-add loop), which is important because although the CPU can do loads and stores in parallel with calculations, the way that this code is written requires it to wait for everything to be loaded before it starts doing calculations. This is because the &lt;code&gt;asm&lt;/code&gt; macro hides a lot of details. Essentially you&amp;rsquo;re telling the compiler to put the input data wherever it likes, and then to substitute wherever it put the data into your assembly code with string manipulation. The compiler stores everything into registers, but then we instruct it to put the input arrays in memory (with the &lt;code&gt;&amp;quot;m&amp;quot;&lt;/code&gt; before the input parameters) so it loads it back into memory again. There are ways that you could write this code to remove the inefficiencies in it, but it is clearly very difficult for even a seasoned professional to write the correct code here. This code is bug-prone - if you hadn&amp;rsquo;t zeroed the output registers with the series of &lt;code&gt;xor&lt;/code&gt; instructions then the code would fail sometimes but not always, with seemingly-random values that depended on the calling function&amp;rsquo;s internal state. It could probably be sped up by replacing &lt;code&gt;&amp;quot;m&amp;quot;&lt;/code&gt; with &lt;code&gt;&amp;quot;r&amp;quot;&lt;/code&gt; here (I hadn&amp;rsquo;t tested that because I only realised that this is a problem while investigating why the old assembly was so much slower in the course of writing this article), but that&amp;rsquo;s not clear from reading the source code of the program and only someone with quite in-depth knowledge of LLVM&amp;rsquo;s assembly syntax would realise that when looking at the code.&lt;/p&gt;
 
-&lt;p&gt;By comparison, the Rust code that uses &lt;code&gt;u128&lt;/code&gt; is about as say-what-you-mean as you can get. Even if your goal was not optimisation you would probably write something similar to it as the simplest solution to the problem, but the code that LLVM produces is very high-quality. You can see already that it&amp;rsquo;s not too different to our hand-written code, but it addresses some of the issues (commented below) while also including a couple more optimisations that I wouldn&amp;rsquo;t have even thought of. It actually still has a couple of optimisations that were missed but they&amp;rsquo;re relatively minor.&lt;/p&gt;
+&lt;p&gt;By comparison, the Rust code that uses &lt;code&gt;u128&lt;/code&gt; is about as say-what-you-mean as you can get. Even if your goal was not optimisation you would probably write something similar to it as the simplest solution to the problem, but the code that LLVM produces is very high-quality. You can see already that it&amp;rsquo;s not too different to our hand-written code, but it addresses some of the issues (commented below) while also including a couple more optimisations that I wouldn&amp;rsquo;t have even thought of. I couldn&amp;rsquo;t find any significant optimisations that it missed.&lt;/p&gt;
 
 &lt;p&gt;Here&amp;rsquo;s the generated assembly:&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-assembly&#34; data-lang=&#34;assembly&#34;&gt;libbigint.so`disassemble:
@@ -477,19 +477,17 @@
 
     movq   %rsi, -0x38(%rbp)
 
-    ;; LLVM actually missed a trick here, this could be
-    ;; expressed as `movq 0x30(%rbp), %rax`.
-    ;;
-    ;; I think this was missed because one of the two operands
-    ;; to `mul` _must_ be in `%rax` and so it probably decides
-    ;; to store this variable in `%rcx` and then emits the move
-    ;; and the multiplication together in order to multiply `%rcx`
-    ;; with `%r11`.
+    ;; I originally thought that this was a missed optimisation,
+    ;; but it actually has to do this (instead of doing
+    ;; `movq 0x30(%rbp), %rax`) because the `%rax` register gets
+    ;; clobbered by the `mulq` below. This means it can multiply
+    ;; the first element of the first array by each of the
+    ;; elements of th without having to reload it from memory
+    ;; like the hand-written assembly does.
     movq   0x30(%rbp), %rcx
     movq   %rcx,       %rax
 
-    ;; LLVM multiplies from a register instead of from memory -
-    ;; great!
+    ;; LLVM multiplies from a register instead of from memory
     mulq   %r11
 
     ;; LLVM moves `%rdx` (the upper bits) into a register, since
@@ -507,8 +505,9 @@
     movq   0x20(%rbp), %rsi
     movq   %rcx,       %rax
     mulq   %rsi
-    ;; Again, a (minor) missed optimisation - this could be
-    ;; `movq %rsi, -0x40(%rbp)`
+
+    ;; LLVM uses `%r13` as an intermediate because it needs this
+    ;; value in `%r13` later to operate on it anyway.
     movq   %rsi,       %r13
     movq   %r13,       -0x40(%rbp)
 
@@ -547,10 +546,12 @@
     ;; we combine the addition of the carry flag and the addition
     ;; of the number&amp;#39;s components together into one instruction.
     ;;
-    ;; A minor missed optimisation, but storing this in `%rcx` is
-    ;; unnecessary, because the flags would be at the top of the 
-    ;; stack anyway (you could remove the `popq %rcx` above and
-    ;; this `pushq %rcx` and it would act the same).
+    ;; It&amp;#39;s possible that the way LLVM does it is faster on modern
+    ;; processors, but storing this in `%rcx` is unnecessary,
+    ;; because the flags would be at the top of the stack anyway
+    ;; (i.e. you could remove the `popq %rcx` above and this
+    ;; `pushq %rcx` and it would act the same). If it is slower
+    ;; then the difference will be negligible.
     pushq  %rcx
     popfq  
     adcq   %r14, %r12
