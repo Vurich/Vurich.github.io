@@ -221,6 +221,7 @@ pre {
 	padding: 5px;
 	margin-bottom: 20px;
 	overflow: auto;
+	word-wrap: none;
 }
 
 code {
