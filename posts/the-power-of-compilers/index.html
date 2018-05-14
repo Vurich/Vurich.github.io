@@ -113,46 +113,46 @@ window.onload = ready;
 
 <p>For a long time we&rsquo;ve maintained parallel implementations of arithmetic, one in Rust for stable builds and one in inline assembly (which is automatically used when you compile with the nightly compiler). We do this because we store these 256-bit numbers as arrays of 64-bit numbers and there is no way to multiply two 64-bit numbers to get a more-than-64-bit result in Rust (since Rust&rsquo;s integer types only go up to <code>u64</code>). This is despite the fact that x86_64 (our main target platform) natively supports 128-bit results of calculations with 64-bit numbers. So, we resort to splitting the 64-bit numbers into two 32-bit numbers (because we <em>can</em> multiply two 32-bit numbers to get a 64-bit result).</p>
 <div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-rust" data-lang="rust"><span style="color:#66d9ef">impl</span> U256 {
-    <span style="color:#66d9ef">fn</span> <span style="color:#a6e22e">full_mul</span>(self, other: <span style="color:#a6e22e">Self</span>) -&gt; <span style="color:#a6e22e">U512</span> {
-        <span style="color:#66d9ef">let</span> U256(<span style="color:#66d9ef">ref</span> me) <span style="color:#f92672">=</span> self;
-        <span style="color:#66d9ef">let</span> U256(<span style="color:#66d9ef">ref</span> you) <span style="color:#f92672">=</span> other;
-        <span style="color:#66d9ef">let</span> <span style="color:#66d9ef">mut</span> ret <span style="color:#f92672">=</span> [<span style="color:#ae81ff">0</span><span style="color:#66d9ef">u64</span>; U512_SIZE];
+  <span style="color:#66d9ef">fn</span> <span style="color:#a6e22e">full_mul</span>(self, other: <span style="color:#a6e22e">Self</span>) -&gt; <span style="color:#a6e22e">U512</span> {
+    <span style="color:#66d9ef">let</span> U256(<span style="color:#66d9ef">ref</span> me) <span style="color:#f92672">=</span> self;
+    <span style="color:#66d9ef">let</span> U256(<span style="color:#66d9ef">ref</span> you) <span style="color:#f92672">=</span> other;
+    <span style="color:#66d9ef">let</span> <span style="color:#66d9ef">mut</span> ret <span style="color:#f92672">=</span> [<span style="color:#ae81ff">0</span><span style="color:#66d9ef">u64</span>; U512_SIZE];
 
 
-        <span style="color:#66d9ef">for</span> i <span style="color:#66d9ef">in</span> <span style="color:#ae81ff">0</span>..U256_SIZE {
-            <span style="color:#66d9ef">let</span> <span style="color:#66d9ef">mut</span> carry <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span><span style="color:#66d9ef">u64</span>;
-            <span style="color:#75715e">// `split` splits a 64-bit number into upper and lower halves
-</span><span style="color:#75715e"></span>            <span style="color:#66d9ef">let</span> (b_u, b_l) <span style="color:#f92672">=</span> split(you[i]);
+    <span style="color:#66d9ef">for</span> i <span style="color:#66d9ef">in</span> <span style="color:#ae81ff">0</span>..U256_SIZE {
+      <span style="color:#66d9ef">let</span> <span style="color:#66d9ef">mut</span> carry <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span><span style="color:#66d9ef">u64</span>;
+      <span style="color:#75715e">// `split` splits a 64-bit number into upper and lower halves
+</span><span style="color:#75715e"></span>      <span style="color:#66d9ef">let</span> (b_u, b_l) <span style="color:#f92672">=</span> split(you[i]);
 
-            <span style="color:#66d9ef">for</span> j <span style="color:#66d9ef">in</span> <span style="color:#ae81ff">0</span>..U256_SIZE {
-                <span style="color:#75715e">// This process is so slow that it&#39;s faster to check for 0 and skip
-</span><span style="color:#75715e"></span>                <span style="color:#75715e">// it if possible.
-</span><span style="color:#75715e"></span>                <span style="color:#66d9ef">if</span> me[j] <span style="color:#f92672">!=</span> <span style="color:#ae81ff">0</span> <span style="color:#f92672">||</span> carry <span style="color:#f92672">!=</span> <span style="color:#ae81ff">0</span> {
-                    <span style="color:#66d9ef">let</span> a <span style="color:#f92672">=</span> split(me[j]);
+      <span style="color:#66d9ef">for</span> j <span style="color:#66d9ef">in</span> <span style="color:#ae81ff">0</span>..U256_SIZE {
+        <span style="color:#75715e">// This process is so slow that it&#39;s faster to check for 0 and skip
+</span><span style="color:#75715e"></span>        <span style="color:#75715e">// it if possible.
+</span><span style="color:#75715e"></span>        <span style="color:#66d9ef">if</span> me[j] <span style="color:#f92672">!=</span> <span style="color:#ae81ff">0</span> <span style="color:#f92672">||</span> carry <span style="color:#f92672">!=</span> <span style="color:#ae81ff">0</span> {
+          <span style="color:#66d9ef">let</span> a <span style="color:#f92672">=</span> split(me[j]);
 
-                    <span style="color:#75715e">// `mul_u32` multiplies a 64-bit number that&#39;s been split into
-</span><span style="color:#75715e"></span>                    <span style="color:#75715e">// an `(upper, lower)` pair by a 32-bit number to get a 96-bit
-</span><span style="color:#75715e"></span>                    <span style="color:#75715e">// result. Yes, 96-bit (it returns a `(u32, u64)` pair).
-</span><span style="color:#75715e"></span>                    <span style="color:#66d9ef">let</span> (c_l, overflow_l) <span style="color:#f92672">=</span> mul_u32(a, b_l, ret[i <span style="color:#f92672">+</span> j]);
+          <span style="color:#75715e">// `mul_u32` multiplies a 64-bit number that&#39;s been split into
+</span><span style="color:#75715e"></span>          <span style="color:#75715e">// an `(upper, lower)` pair by a 32-bit number to get a 96-bit
+</span><span style="color:#75715e"></span>          <span style="color:#75715e">// result. Yes, 96-bit (it returns a `(u32, u64)` pair).
+</span><span style="color:#75715e"></span>          <span style="color:#66d9ef">let</span> (c_l, overflow_l) <span style="color:#f92672">=</span> mul_u32(a, b_l, ret[i <span style="color:#f92672">+</span> j]);
 
-                    <span style="color:#75715e">// Since we have to multiply by a 64-bit number, we have to do
-</span><span style="color:#75715e"></span>                    <span style="color:#75715e">// this twice.
-</span><span style="color:#75715e"></span>                    <span style="color:#66d9ef">let</span> (c_u, overflow_u) <span style="color:#f92672">=</span> mul_u32(a, b_u, c_l <span style="color:#f92672">&gt;&gt;</span> <span style="color:#ae81ff">32</span>);
-                    ret[i <span style="color:#f92672">+</span> j] <span style="color:#f92672">=</span> (c_l <span style="color:#f92672">&amp;</span> <span style="color:#ae81ff">0xffffffff</span>) <span style="color:#f92672">+</span> (c_u <span style="color:#f92672">&lt;&lt;</span> <span style="color:#ae81ff">32</span>);
+          <span style="color:#75715e">// Since we have to multiply by a 64-bit number, we have to do
+</span><span style="color:#75715e"></span>          <span style="color:#75715e">// this twice.
+</span><span style="color:#75715e"></span>          <span style="color:#66d9ef">let</span> (c_u, overflow_u) <span style="color:#f92672">=</span> mul_u32(a, b_u, c_l <span style="color:#f92672">&gt;&gt;</span> <span style="color:#ae81ff">32</span>);
+          ret[i <span style="color:#f92672">+</span> j] <span style="color:#f92672">=</span> (c_l <span style="color:#f92672">&amp;</span> <span style="color:#ae81ff">0xffffffff</span>) <span style="color:#f92672">+</span> (c_u <span style="color:#f92672">&lt;&lt;</span> <span style="color:#ae81ff">32</span>);
 
-                    <span style="color:#75715e">// Then we have to do this complex logic to set the result. Gross.
-</span><span style="color:#75715e"></span>                    <span style="color:#66d9ef">let</span> res <span style="color:#f92672">=</span> (c_u <span style="color:#f92672">&gt;&gt;</span> <span style="color:#ae81ff">32</span>) <span style="color:#f92672">+</span> (overflow_u <span style="color:#f92672">&lt;&lt;</span> <span style="color:#ae81ff">32</span>);
-                    <span style="color:#66d9ef">let</span> (res, o1) <span style="color:#f92672">=</span> res.overflowing_add(overflow_l <span style="color:#f92672">+</span> carry);
-                    <span style="color:#66d9ef">let</span> (res, o2) <span style="color:#f92672">=</span> res.overflowing_add(ret[i <span style="color:#f92672">+</span> j <span style="color:#f92672">+</span> <span style="color:#ae81ff">1</span>]);
-                    ret[i <span style="color:#f92672">+</span> j <span style="color:#f92672">+</span> <span style="color:#ae81ff">1</span>] <span style="color:#f92672">=</span> res;
+          <span style="color:#75715e">// Then we have to do this complex logic to set the result. Gross.
+</span><span style="color:#75715e"></span>          <span style="color:#66d9ef">let</span> res <span style="color:#f92672">=</span> (c_u <span style="color:#f92672">&gt;&gt;</span> <span style="color:#ae81ff">32</span>) <span style="color:#f92672">+</span> (overflow_u <span style="color:#f92672">&lt;&lt;</span> <span style="color:#ae81ff">32</span>);
+          <span style="color:#66d9ef">let</span> (res, o1) <span style="color:#f92672">=</span> res.overflowing_add(overflow_l <span style="color:#f92672">+</span> carry);
+          <span style="color:#66d9ef">let</span> (res, o2) <span style="color:#f92672">=</span> res.overflowing_add(ret[i <span style="color:#f92672">+</span> j <span style="color:#f92672">+</span> <span style="color:#ae81ff">1</span>]);
+          ret[i <span style="color:#f92672">+</span> j <span style="color:#f92672">+</span> <span style="color:#ae81ff">1</span>] <span style="color:#f92672">=</span> res;
 
-                    carry <span style="color:#f92672">=</span> (o1 <span style="color:#f92672">|</span> o2) <span style="color:#66d9ef">as</span> <span style="color:#66d9ef">u64</span>;
-                }
-            }
+          carry <span style="color:#f92672">=</span> (o1 <span style="color:#f92672">|</span> o2) <span style="color:#66d9ef">as</span> <span style="color:#66d9ef">u64</span>;
         }
-
-        U512(ret)
+      }
     }
+
+    U512(ret)
+  }
 }</code></pre></div>
 <p>You don&rsquo;t even have to understand all of the code to see how non-optimal this is. Inspecting the output of the compiler shows that the generated assembly is extremely suboptimal. It does much more work than necessary essentially just to work around limitations in the Rust language. So we wrote an inline assembly version. The important thing about using inline assembly here is that x86_64 natively supports multiplying two 64-bit values into a 128-bit result. When Rust does <code>a * b</code> when <code>a</code> and <code>b</code> are both <code>u64</code> the CPU actually multiplies them to create a 128-bit result and then Rust just throws away the upper 64 bits. We want the upper 64 in this case though, and the only way to access it efficiently is by using inline assembly.</p>
 
@@ -168,42 +168,42 @@ window.onload = ready;
 
 <p>All that changed with <a href="https://blog.rust-lang.org/2018/05/10/Rust-1.26.html">Rust 1.26</a>. Now we can do <code>a as u128 * b as u128</code> and the compiler will use x86_64&rsquo;s native u64-to-u128 multiplication (even though you cast both numbers to <code>u128</code> it knows that they&rsquo;re &ldquo;really&rdquo; just <code>u64</code>, you just want a <code>u128</code> result). That means our code now looks like this:</p>
 <div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-rust" data-lang="rust"><span style="color:#66d9ef">impl</span> U256 {
-    <span style="color:#66d9ef">fn</span> <span style="color:#a6e22e">full_mul</span>(self, other: <span style="color:#a6e22e">Self</span>) -&gt; <span style="color:#a6e22e">U512</span> {
-        <span style="color:#66d9ef">let</span> U256(<span style="color:#66d9ef">ref</span> me) <span style="color:#f92672">=</span> self;
-        <span style="color:#66d9ef">let</span> U256(<span style="color:#66d9ef">ref</span> you) <span style="color:#f92672">=</span> other;
-        <span style="color:#66d9ef">let</span> <span style="color:#66d9ef">mut</span> ret <span style="color:#f92672">=</span> [<span style="color:#ae81ff">0</span><span style="color:#66d9ef">u64</span>; U512_SIZE];
+  <span style="color:#66d9ef">fn</span> <span style="color:#a6e22e">full_mul</span>(self, other: <span style="color:#a6e22e">Self</span>) -&gt; <span style="color:#a6e22e">U512</span> {
+    <span style="color:#66d9ef">let</span> U256(<span style="color:#66d9ef">ref</span> me) <span style="color:#f92672">=</span> self;
+    <span style="color:#66d9ef">let</span> U256(<span style="color:#66d9ef">ref</span> you) <span style="color:#f92672">=</span> other;
+    <span style="color:#66d9ef">let</span> <span style="color:#66d9ef">mut</span> ret <span style="color:#f92672">=</span> [<span style="color:#ae81ff">0</span><span style="color:#66d9ef">u64</span>; U512_SIZE];
 
-        <span style="color:#66d9ef">for</span> i <span style="color:#66d9ef">in</span> <span style="color:#ae81ff">0</span>..U256_SIZE {
-            <span style="color:#66d9ef">let</span> <span style="color:#66d9ef">mut</span> carry <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span><span style="color:#66d9ef">u64</span>;
-            <span style="color:#66d9ef">let</span> b <span style="color:#f92672">=</span> you[i];
+    <span style="color:#66d9ef">for</span> i <span style="color:#66d9ef">in</span> <span style="color:#ae81ff">0</span>..U256_SIZE {
+      <span style="color:#66d9ef">let</span> <span style="color:#66d9ef">mut</span> carry <span style="color:#f92672">=</span> <span style="color:#ae81ff">0</span><span style="color:#66d9ef">u64</span>;
+      <span style="color:#66d9ef">let</span> b <span style="color:#f92672">=</span> you[i];
 
-            <span style="color:#66d9ef">for</span> j <span style="color:#66d9ef">in</span> <span style="color:#ae81ff">0</span>..U256_SIZE {
-                <span style="color:#66d9ef">let</span> a <span style="color:#f92672">=</span> me[j];
+      <span style="color:#66d9ef">for</span> j <span style="color:#66d9ef">in</span> <span style="color:#ae81ff">0</span>..U256_SIZE {
+        <span style="color:#66d9ef">let</span> a <span style="color:#f92672">=</span> me[j];
 
-                <span style="color:#75715e">// This compiles down to just use x86&#39;s native 128-bit arithmetic
-</span><span style="color:#75715e"></span>                <span style="color:#66d9ef">let</span> (hi, low) <span style="color:#f92672">=</span> split_u128(a <span style="color:#66d9ef">as</span> u128 <span style="color:#f92672">*</span> b <span style="color:#66d9ef">as</span> u128);
+        <span style="color:#75715e">// This compiles down to just use x86&#39;s native 128-bit arithmetic
+</span><span style="color:#75715e"></span>        <span style="color:#66d9ef">let</span> (hi, low) <span style="color:#f92672">=</span> split_u128(a <span style="color:#66d9ef">as</span> u128 <span style="color:#f92672">*</span> b <span style="color:#66d9ef">as</span> u128);
 
-                <span style="color:#66d9ef">let</span> overflow <span style="color:#f92672">=</span> {
-                    <span style="color:#66d9ef">let</span> existing_low <span style="color:#f92672">=</span> <span style="color:#f92672">&amp;</span><span style="color:#66d9ef">mut</span> ret[i <span style="color:#f92672">+</span> j];
-                    <span style="color:#66d9ef">let</span> (low, o) <span style="color:#f92672">=</span> low.overflowing_add(<span style="color:#f92672">*</span>existing_low);
-                    <span style="color:#f92672">*</span>existing_low <span style="color:#f92672">=</span> low;
-                    o
-                };
+        <span style="color:#66d9ef">let</span> overflow <span style="color:#f92672">=</span> {
+          <span style="color:#66d9ef">let</span> existing_low <span style="color:#f92672">=</span> <span style="color:#f92672">&amp;</span><span style="color:#66d9ef">mut</span> ret[i <span style="color:#f92672">+</span> j];
+          <span style="color:#66d9ef">let</span> (low, o) <span style="color:#f92672">=</span> low.overflowing_add(<span style="color:#f92672">*</span>existing_low);
+          <span style="color:#f92672">*</span>existing_low <span style="color:#f92672">=</span> low;
+          o
+        };
 
-                carry <span style="color:#f92672">=</span> {
-                    <span style="color:#66d9ef">let</span> existing_hi <span style="color:#f92672">=</span> <span style="color:#f92672">&amp;</span><span style="color:#66d9ef">mut</span> ret[i <span style="color:#f92672">+</span> j <span style="color:#f92672">+</span> <span style="color:#ae81ff">1</span>];
-                    <span style="color:#66d9ef">let</span> hi <span style="color:#f92672">=</span> hi <span style="color:#f92672">+</span> overflow <span style="color:#66d9ef">as</span> <span style="color:#66d9ef">u64</span>;
-                    <span style="color:#66d9ef">let</span> (hi, o0) <span style="color:#f92672">=</span> hi.overflowing_add(carry);
-                    <span style="color:#66d9ef">let</span> (hi, o1) <span style="color:#f92672">=</span> hi.overflowing_add(<span style="color:#f92672">*</span>existing_hi);
-                    <span style="color:#f92672">*</span>existing_hi <span style="color:#f92672">=</span> hi;
+        carry <span style="color:#f92672">=</span> {
+          <span style="color:#66d9ef">let</span> existing_hi <span style="color:#f92672">=</span> <span style="color:#f92672">&amp;</span><span style="color:#66d9ef">mut</span> ret[i <span style="color:#f92672">+</span> j <span style="color:#f92672">+</span> <span style="color:#ae81ff">1</span>];
+          <span style="color:#66d9ef">let</span> hi <span style="color:#f92672">=</span> hi <span style="color:#f92672">+</span> overflow <span style="color:#66d9ef">as</span> <span style="color:#66d9ef">u64</span>;
+          <span style="color:#66d9ef">let</span> (hi, o0) <span style="color:#f92672">=</span> hi.overflowing_add(carry);
+          <span style="color:#66d9ef">let</span> (hi, o1) <span style="color:#f92672">=</span> hi.overflowing_add(<span style="color:#f92672">*</span>existing_hi);
+          <span style="color:#f92672">*</span>existing_hi <span style="color:#f92672">=</span> hi;
 
-                    (o0 <span style="color:#f92672">|</span> o1) <span style="color:#66d9ef">as</span> <span style="color:#66d9ef">u64</span>
-                }
-            }
+          (o0 <span style="color:#f92672">|</span> o1) <span style="color:#66d9ef">as</span> <span style="color:#66d9ef">u64</span>
         }
-
-        U512(ret)
+      }
     }
+
+    U512(ret)
+  }
 }</code></pre></div>
 <p>Although it&rsquo;s almost certainly not as fast as using the LLVM-native <code>i256</code> type, the speed is much, much better. Here it is compared to the original Rust implementation:</p>
 
@@ -225,129 +225,129 @@ window.onload = ready;
 
 <p>Here&rsquo;s the hand-written assembly. I&rsquo;ve presented it without comment because I want to comment the assembly that is actually emitted by the compiler (since, as you&rsquo;ll see, the <code>asm!</code> macro hides more than you&rsquo;d expect):</p>
 <div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-rust" data-lang="rust"><span style="color:#66d9ef">impl</span> U256 {
-    <span style="color:#e6db74">/// Multiplies two 256-bit integers to produce full 512-bit integer
-</span><span style="color:#e6db74"></span>    <span style="color:#e6db74">/// No overflow possible
-</span><span style="color:#e6db74"></span>    <span style="color:#66d9ef">pub</span> <span style="color:#66d9ef">fn</span> <span style="color:#a6e22e">full_mul</span>(self, other: <span style="color:#a6e22e">U256</span>) -&gt; <span style="color:#a6e22e">U512</span> {
-        <span style="color:#66d9ef">let</span> self_t: <span style="color:#66d9ef">&amp;</span>[<span style="color:#66d9ef">u64</span>; <span style="color:#ae81ff">4</span>] <span style="color:#f92672">=</span> <span style="color:#f92672">&amp;</span>self.<span style="color:#ae81ff">0</span>;
-        <span style="color:#66d9ef">let</span> other_t: <span style="color:#66d9ef">&amp;</span>[<span style="color:#66d9ef">u64</span>; <span style="color:#ae81ff">4</span>] <span style="color:#f92672">=</span> <span style="color:#f92672">&amp;</span>other.<span style="color:#ae81ff">0</span>;
-        <span style="color:#66d9ef">let</span> <span style="color:#66d9ef">mut</span> result: [<span style="color:#66d9ef">u64</span>; <span style="color:#ae81ff">8</span>] <span style="color:#f92672">=</span> <span style="color:#66d9ef">unsafe</span> { ::core::mem::uninitialized() };
-        <span style="color:#66d9ef">unsafe</span> {
-            asm<span style="color:#f92672">!</span>(<span style="color:#e6db74">&#34;
-</span><span style="color:#e6db74">                mov $8, %rax
-</span><span style="color:#e6db74">                mulq $12
-</span><span style="color:#e6db74">                mov %rax, $0
-</span><span style="color:#e6db74">                mov %rdx, $1
-</span><span style="color:#e6db74">                mov $8, %rax
-</span><span style="color:#e6db74">                mulq $13
-</span><span style="color:#e6db74">                add %rax, $1
-</span><span style="color:#e6db74">                adc $$0, %rdx
-</span><span style="color:#e6db74">                mov %rdx, $2
-</span><span style="color:#e6db74">                mov $8, %rax
-</span><span style="color:#e6db74">                mulq $14
-</span><span style="color:#e6db74">                add %rax, $2
-</span><span style="color:#e6db74">                adc $$0, %rdx
-</span><span style="color:#e6db74">                mov %rdx, $3
-</span><span style="color:#e6db74">                mov $8, %rax
-</span><span style="color:#e6db74">                mulq $15
-</span><span style="color:#e6db74">                add %rax, $3
-</span><span style="color:#e6db74">                adc $$0, %rdx
-</span><span style="color:#e6db74">                mov %rdx, $4
-</span><span style="color:#e6db74">                mov $9, %rax
-</span><span style="color:#e6db74">                mulq $12
-</span><span style="color:#e6db74">                add %rax, $1
-</span><span style="color:#e6db74">                adc %rdx, $2
-</span><span style="color:#e6db74">                adc $$0, $3
-</span><span style="color:#e6db74">                adc $$0, $4
-</span><span style="color:#e6db74">                xor $5, $5
-</span><span style="color:#e6db74">                adc $$0, $5
-</span><span style="color:#e6db74">                xor $6, $6
-</span><span style="color:#e6db74">                adc $$0, $6
-</span><span style="color:#e6db74">                xor $7, $7
-</span><span style="color:#e6db74">                adc $$0, $7
-</span><span style="color:#e6db74">                mov $9, %rax
-</span><span style="color:#e6db74">                mulq $13
-</span><span style="color:#e6db74">                add %rax, $2
-</span><span style="color:#e6db74">                adc %rdx, $3
-</span><span style="color:#e6db74">                adc $$0, $4
-</span><span style="color:#e6db74">                adc $$0, $5
-</span><span style="color:#e6db74">                adc $$0, $6
-</span><span style="color:#e6db74">                adc $$0, $7
-</span><span style="color:#e6db74">                mov $9, %rax
-</span><span style="color:#e6db74">                mulq $14
-</span><span style="color:#e6db74">                add %rax, $3
-</span><span style="color:#e6db74">                adc %rdx, $4
-</span><span style="color:#e6db74">                adc $$0, $5
-</span><span style="color:#e6db74">                adc $$0, $6
-</span><span style="color:#e6db74">                adc $$0, $7
-</span><span style="color:#e6db74">                mov $9, %rax
-</span><span style="color:#e6db74">                mulq $15
-</span><span style="color:#e6db74">                add %rax, $4
-</span><span style="color:#e6db74">                adc %rdx, $5
-</span><span style="color:#e6db74">                adc $$0, $6
-</span><span style="color:#e6db74">                adc $$0, $7
-</span><span style="color:#e6db74">                mov $10, %rax
-</span><span style="color:#e6db74">                mulq $12
-</span><span style="color:#e6db74">                add %rax, $2
-</span><span style="color:#e6db74">                adc %rdx, $3
-</span><span style="color:#e6db74">                adc $$0, $4
-</span><span style="color:#e6db74">                adc $$0, $5
-</span><span style="color:#e6db74">                adc $$0, $6
-</span><span style="color:#e6db74">                adc $$0, $7
-</span><span style="color:#e6db74">                mov $10, %rax
-</span><span style="color:#e6db74">                mulq $13
-</span><span style="color:#e6db74">                add %rax, $3
-</span><span style="color:#e6db74">                adc %rdx, $4
-</span><span style="color:#e6db74">                adc $$0, $5
-</span><span style="color:#e6db74">                adc $$0, $6
-</span><span style="color:#e6db74">                adc $$0, $7
-</span><span style="color:#e6db74">                mov $10, %rax
-</span><span style="color:#e6db74">                mulq $14
-</span><span style="color:#e6db74">                add %rax, $4
-</span><span style="color:#e6db74">                adc %rdx, $5
-</span><span style="color:#e6db74">                adc $$0, $6
-</span><span style="color:#e6db74">                adc $$0, $7
-</span><span style="color:#e6db74">                mov $10, %rax
-</span><span style="color:#e6db74">                mulq $15
-</span><span style="color:#e6db74">                add %rax, $5
-</span><span style="color:#e6db74">                adc %rdx, $6
-</span><span style="color:#e6db74">                adc $$0, $7
-</span><span style="color:#e6db74">                mov $11, %rax
-</span><span style="color:#e6db74">                mulq $12
-</span><span style="color:#e6db74">                add %rax, $3
-</span><span style="color:#e6db74">                adc %rdx, $4
-</span><span style="color:#e6db74">                adc $$0, $5
-</span><span style="color:#e6db74">                adc $$0, $6
-</span><span style="color:#e6db74">                adc $$0, $7
-</span><span style="color:#e6db74">                mov $11, %rax
-</span><span style="color:#e6db74">                mulq $13
-</span><span style="color:#e6db74">                add %rax, $4
-</span><span style="color:#e6db74">                adc %rdx, $5
-</span><span style="color:#e6db74">                adc $$0, $6
-</span><span style="color:#e6db74">                adc $$0, $7
-</span><span style="color:#e6db74">                mov $11, %rax
-</span><span style="color:#e6db74">                mulq $14
-</span><span style="color:#e6db74">                add %rax, $5
-</span><span style="color:#e6db74">                adc %rdx, $6
-</span><span style="color:#e6db74">                adc $$0, $7
-</span><span style="color:#e6db74">                mov $11, %rax
-</span><span style="color:#e6db74">                mulq $15
-</span><span style="color:#e6db74">                add %rax, $6
-</span><span style="color:#e6db74">                adc %rdx, $7
-</span><span style="color:#e6db74">                &#34;</span>
-            : <span style="color:#75715e">/* $0 */</span> <span style="color:#e6db74">&#34;={r8}&#34;</span>(result[<span style="color:#ae81ff">0</span>]),  <span style="color:#75715e">/* $1 */</span> <span style="color:#e6db74">&#34;={r9}&#34;</span>(result[<span style="color:#ae81ff">1</span>]),  <span style="color:#75715e">/* $2 */</span> <span style="color:#e6db74">&#34;={r10}&#34;</span>(result[<span style="color:#ae81ff">2</span>]),
-              <span style="color:#75715e">/* $3 */</span> <span style="color:#e6db74">&#34;={r11}&#34;</span>(result[<span style="color:#ae81ff">3</span>]), <span style="color:#75715e">/* $4 */</span> <span style="color:#e6db74">&#34;={r12}&#34;</span>(result[<span style="color:#ae81ff">4</span>]), <span style="color:#75715e">/* $5 */</span> <span style="color:#e6db74">&#34;={r13}&#34;</span>(result[<span style="color:#ae81ff">5</span>]),
-              <span style="color:#75715e">/* $6 */</span> <span style="color:#e6db74">&#34;={r14}&#34;</span>(result[<span style="color:#ae81ff">6</span>]), <span style="color:#75715e">/* $7 */</span> <span style="color:#e6db74">&#34;={r15}&#34;</span>(result[<span style="color:#ae81ff">7</span>])
+  <span style="color:#e6db74">/// Multiplies two 256-bit integers to produce full 512-bit integer
+</span><span style="color:#e6db74"></span>  <span style="color:#e6db74">/// No overflow possible
+</span><span style="color:#e6db74"></span>  <span style="color:#66d9ef">pub</span> <span style="color:#66d9ef">fn</span> <span style="color:#a6e22e">full_mul</span>(self, other: <span style="color:#a6e22e">U256</span>) -&gt; <span style="color:#a6e22e">U512</span> {
+    <span style="color:#66d9ef">let</span> self_t: <span style="color:#66d9ef">&amp;</span>[<span style="color:#66d9ef">u64</span>; <span style="color:#ae81ff">4</span>] <span style="color:#f92672">=</span> <span style="color:#f92672">&amp;</span>self.<span style="color:#ae81ff">0</span>;
+    <span style="color:#66d9ef">let</span> other_t: <span style="color:#66d9ef">&amp;</span>[<span style="color:#66d9ef">u64</span>; <span style="color:#ae81ff">4</span>] <span style="color:#f92672">=</span> <span style="color:#f92672">&amp;</span>other.<span style="color:#ae81ff">0</span>;
+    <span style="color:#66d9ef">let</span> <span style="color:#66d9ef">mut</span> result: [<span style="color:#66d9ef">u64</span>; <span style="color:#ae81ff">8</span>] <span style="color:#f92672">=</span> <span style="color:#66d9ef">unsafe</span> { ::core::mem::uninitialized() };
+    <span style="color:#66d9ef">unsafe</span> {
+      asm<span style="color:#f92672">!</span>(<span style="color:#e6db74">&#34;
+</span><span style="color:#e6db74">        mov $8, %rax
+</span><span style="color:#e6db74">        mulq $12
+</span><span style="color:#e6db74">        mov %rax, $0
+</span><span style="color:#e6db74">        mov %rdx, $1
+</span><span style="color:#e6db74">        mov $8, %rax
+</span><span style="color:#e6db74">        mulq $13
+</span><span style="color:#e6db74">        add %rax, $1
+</span><span style="color:#e6db74">        adc $$0, %rdx
+</span><span style="color:#e6db74">        mov %rdx, $2
+</span><span style="color:#e6db74">        mov $8, %rax
+</span><span style="color:#e6db74">        mulq $14
+</span><span style="color:#e6db74">        add %rax, $2
+</span><span style="color:#e6db74">        adc $$0, %rdx
+</span><span style="color:#e6db74">        mov %rdx, $3
+</span><span style="color:#e6db74">        mov $8, %rax
+</span><span style="color:#e6db74">        mulq $15
+</span><span style="color:#e6db74">        add %rax, $3
+</span><span style="color:#e6db74">        adc $$0, %rdx
+</span><span style="color:#e6db74">        mov %rdx, $4
+</span><span style="color:#e6db74">        mov $9, %rax
+</span><span style="color:#e6db74">        mulq $12
+</span><span style="color:#e6db74">        add %rax, $1
+</span><span style="color:#e6db74">        adc %rdx, $2
+</span><span style="color:#e6db74">        adc $$0, $3
+</span><span style="color:#e6db74">        adc $$0, $4
+</span><span style="color:#e6db74">        xor $5, $5
+</span><span style="color:#e6db74">        adc $$0, $5
+</span><span style="color:#e6db74">        xor $6, $6
+</span><span style="color:#e6db74">        adc $$0, $6
+</span><span style="color:#e6db74">        xor $7, $7
+</span><span style="color:#e6db74">        adc $$0, $7
+</span><span style="color:#e6db74">        mov $9, %rax
+</span><span style="color:#e6db74">        mulq $13
+</span><span style="color:#e6db74">        add %rax, $2
+</span><span style="color:#e6db74">        adc %rdx, $3
+</span><span style="color:#e6db74">        adc $$0, $4
+</span><span style="color:#e6db74">        adc $$0, $5
+</span><span style="color:#e6db74">        adc $$0, $6
+</span><span style="color:#e6db74">        adc $$0, $7
+</span><span style="color:#e6db74">        mov $9, %rax
+</span><span style="color:#e6db74">        mulq $14
+</span><span style="color:#e6db74">        add %rax, $3
+</span><span style="color:#e6db74">        adc %rdx, $4
+</span><span style="color:#e6db74">        adc $$0, $5
+</span><span style="color:#e6db74">        adc $$0, $6
+</span><span style="color:#e6db74">        adc $$0, $7
+</span><span style="color:#e6db74">        mov $9, %rax
+</span><span style="color:#e6db74">        mulq $15
+</span><span style="color:#e6db74">        add %rax, $4
+</span><span style="color:#e6db74">        adc %rdx, $5
+</span><span style="color:#e6db74">        adc $$0, $6
+</span><span style="color:#e6db74">        adc $$0, $7
+</span><span style="color:#e6db74">        mov $10, %rax
+</span><span style="color:#e6db74">        mulq $12
+</span><span style="color:#e6db74">        add %rax, $2
+</span><span style="color:#e6db74">        adc %rdx, $3
+</span><span style="color:#e6db74">        adc $$0, $4
+</span><span style="color:#e6db74">        adc $$0, $5
+</span><span style="color:#e6db74">        adc $$0, $6
+</span><span style="color:#e6db74">        adc $$0, $7
+</span><span style="color:#e6db74">        mov $10, %rax
+</span><span style="color:#e6db74">        mulq $13
+</span><span style="color:#e6db74">        add %rax, $3
+</span><span style="color:#e6db74">        adc %rdx, $4
+</span><span style="color:#e6db74">        adc $$0, $5
+</span><span style="color:#e6db74">        adc $$0, $6
+</span><span style="color:#e6db74">        adc $$0, $7
+</span><span style="color:#e6db74">        mov $10, %rax
+</span><span style="color:#e6db74">        mulq $14
+</span><span style="color:#e6db74">        add %rax, $4
+</span><span style="color:#e6db74">        adc %rdx, $5
+</span><span style="color:#e6db74">        adc $$0, $6
+</span><span style="color:#e6db74">        adc $$0, $7
+</span><span style="color:#e6db74">        mov $10, %rax
+</span><span style="color:#e6db74">        mulq $15
+</span><span style="color:#e6db74">        add %rax, $5
+</span><span style="color:#e6db74">        adc %rdx, $6
+</span><span style="color:#e6db74">        adc $$0, $7
+</span><span style="color:#e6db74">        mov $11, %rax
+</span><span style="color:#e6db74">        mulq $12
+</span><span style="color:#e6db74">        add %rax, $3
+</span><span style="color:#e6db74">        adc %rdx, $4
+</span><span style="color:#e6db74">        adc $$0, $5
+</span><span style="color:#e6db74">        adc $$0, $6
+</span><span style="color:#e6db74">        adc $$0, $7
+</span><span style="color:#e6db74">        mov $11, %rax
+</span><span style="color:#e6db74">        mulq $13
+</span><span style="color:#e6db74">        add %rax, $4
+</span><span style="color:#e6db74">        adc %rdx, $5
+</span><span style="color:#e6db74">        adc $$0, $6
+</span><span style="color:#e6db74">        adc $$0, $7
+</span><span style="color:#e6db74">        mov $11, %rax
+</span><span style="color:#e6db74">        mulq $14
+</span><span style="color:#e6db74">        add %rax, $5
+</span><span style="color:#e6db74">        adc %rdx, $6
+</span><span style="color:#e6db74">        adc $$0, $7
+</span><span style="color:#e6db74">        mov $11, %rax
+</span><span style="color:#e6db74">        mulq $15
+</span><span style="color:#e6db74">        add %rax, $6
+</span><span style="color:#e6db74">        adc %rdx, $7
+</span><span style="color:#e6db74">        &#34;</span>
+      : <span style="color:#75715e">/* $0 */</span> <span style="color:#e6db74">&#34;={r8}&#34;</span>(result[<span style="color:#ae81ff">0</span>]),  <span style="color:#75715e">/* $1 */</span> <span style="color:#e6db74">&#34;={r9}&#34;</span>(result[<span style="color:#ae81ff">1</span>]),  <span style="color:#75715e">/* $2 */</span> <span style="color:#e6db74">&#34;={r10}&#34;</span>(result[<span style="color:#ae81ff">2</span>]),
+        <span style="color:#75715e">/* $3 */</span> <span style="color:#e6db74">&#34;={r11}&#34;</span>(result[<span style="color:#ae81ff">3</span>]), <span style="color:#75715e">/* $4 */</span> <span style="color:#e6db74">&#34;={r12}&#34;</span>(result[<span style="color:#ae81ff">4</span>]), <span style="color:#75715e">/* $5 */</span> <span style="color:#e6db74">&#34;={r13}&#34;</span>(result[<span style="color:#ae81ff">5</span>]),
+        <span style="color:#75715e">/* $6 */</span> <span style="color:#e6db74">&#34;={r14}&#34;</span>(result[<span style="color:#ae81ff">6</span>]), <span style="color:#75715e">/* $7 */</span> <span style="color:#e6db74">&#34;={r15}&#34;</span>(result[<span style="color:#ae81ff">7</span>])
 
-            : <span style="color:#75715e">/* $8 */</span> <span style="color:#e6db74">&#34;m&#34;</span>(self_t[<span style="color:#ae81ff">0</span>]),   <span style="color:#75715e">/* $9 */</span> <span style="color:#e6db74">&#34;m&#34;</span>(self_t[<span style="color:#ae81ff">1</span>]),   <span style="color:#75715e">/* $10 */</span>  <span style="color:#e6db74">&#34;m&#34;</span>(self_t[<span style="color:#ae81ff">2</span>]),
-              <span style="color:#75715e">/* $11 */</span> <span style="color:#e6db74">&#34;m&#34;</span>(self_t[<span style="color:#ae81ff">3</span>]),  <span style="color:#75715e">/* $12 */</span> <span style="color:#e6db74">&#34;m&#34;</span>(other_t[<span style="color:#ae81ff">0</span>]), <span style="color:#75715e">/* $13 */</span> <span style="color:#e6db74">&#34;m&#34;</span>(other_t[<span style="color:#ae81ff">1</span>]),
-              <span style="color:#75715e">/* $14 */</span> <span style="color:#e6db74">&#34;m&#34;</span>(other_t[<span style="color:#ae81ff">2</span>]), <span style="color:#75715e">/* $15 */</span> <span style="color:#e6db74">&#34;m&#34;</span>(other_t[<span style="color:#ae81ff">3</span>])
-            : <span style="color:#e6db74">&#34;rax&#34;</span>, <span style="color:#e6db74">&#34;rdx&#34;</span>
-            :
-            );
-        }
-
-        U512(result)
+      : <span style="color:#75715e">/* $8 */</span> <span style="color:#e6db74">&#34;m&#34;</span>(self_t[<span style="color:#ae81ff">0</span>]),   <span style="color:#75715e">/* $9 */</span> <span style="color:#e6db74">&#34;m&#34;</span>(self_t[<span style="color:#ae81ff">1</span>]),   <span style="color:#75715e">/* $10 */</span>  <span style="color:#e6db74">&#34;m&#34;</span>(self_t[<span style="color:#ae81ff">2</span>]),
+        <span style="color:#75715e">/* $11 */</span> <span style="color:#e6db74">&#34;m&#34;</span>(self_t[<span style="color:#ae81ff">3</span>]),  <span style="color:#75715e">/* $12 */</span> <span style="color:#e6db74">&#34;m&#34;</span>(other_t[<span style="color:#ae81ff">0</span>]), <span style="color:#75715e">/* $13 */</span> <span style="color:#e6db74">&#34;m&#34;</span>(other_t[<span style="color:#ae81ff">1</span>]),
+        <span style="color:#75715e">/* $14 */</span> <span style="color:#e6db74">&#34;m&#34;</span>(other_t[<span style="color:#ae81ff">2</span>]), <span style="color:#75715e">/* $15 */</span> <span style="color:#e6db74">&#34;m&#34;</span>(other_t[<span style="color:#ae81ff">3</span>])
+      : <span style="color:#e6db74">&#34;rax&#34;</span>, <span style="color:#e6db74">&#34;rdx&#34;</span>
+      :
+      );
     }
+
+    U512(result)
+  }
 }</code></pre></div>
 <p>And here&rsquo;s what that generates. I&rsquo;ve heavily commented it so you can understand what&rsquo;s going on even if you&rsquo;ve never touched assembly in your life, but you will need to know basic low-level details like the difference between memory and registers. If you want to get a primer on the structure of a CPU, the <a href="https://en.wikipedia.org/wiki/Central_processing_unit#Structure_and_implementation">Wikipedia article on structure and implementation of CPUs</a> is a good place to start:</p>
 <div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-assembly" data-lang="assembly">libbigint.so`disassemble:

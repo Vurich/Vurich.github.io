@@ -23,46 +23,46 @@
 
 &lt;p&gt;For a long time we&amp;rsquo;ve maintained parallel implementations of arithmetic, one in Rust for stable builds and one in inline assembly (which is automatically used when you compile with the nightly compiler). We do this because we store these 256-bit numbers as arrays of 64-bit numbers and there is no way to multiply two 64-bit numbers to get a more-than-64-bit result in Rust (since Rust&amp;rsquo;s integer types only go up to &lt;code&gt;u64&lt;/code&gt;). This is despite the fact that x86_64 (our main target platform) natively supports 128-bit results of calculations with 64-bit numbers. So, we resort to splitting the 64-bit numbers into two 32-bit numbers (because we &lt;em&gt;can&lt;/em&gt; multiply two 32-bit numbers to get a 64-bit result).&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;impl&lt;/span&gt; U256 {
-    &lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;full_mul&lt;/span&gt;(self, other: &lt;span style=&#34;color:#a6e22e&#34;&gt;Self&lt;/span&gt;) -&amp;gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;U512&lt;/span&gt; {
-        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; U256(&lt;span style=&#34;color:#66d9ef&#34;&gt;ref&lt;/span&gt; me) &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; self;
-        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; U256(&lt;span style=&#34;color:#66d9ef&#34;&gt;ref&lt;/span&gt; you) &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; other;
-        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;mut&lt;/span&gt; ret &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; [&lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;u64&lt;/span&gt;; U512_SIZE];
+  &lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;full_mul&lt;/span&gt;(self, other: &lt;span style=&#34;color:#a6e22e&#34;&gt;Self&lt;/span&gt;) -&amp;gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;U512&lt;/span&gt; {
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; U256(&lt;span style=&#34;color:#66d9ef&#34;&gt;ref&lt;/span&gt; me) &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; self;
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; U256(&lt;span style=&#34;color:#66d9ef&#34;&gt;ref&lt;/span&gt; you) &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; other;
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;mut&lt;/span&gt; ret &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; [&lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;u64&lt;/span&gt;; U512_SIZE];
 
 
-        &lt;span style=&#34;color:#66d9ef&#34;&gt;for&lt;/span&gt; i &lt;span style=&#34;color:#66d9ef&#34;&gt;in&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;..U256_SIZE {
-            &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;mut&lt;/span&gt; carry &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;u64&lt;/span&gt;;
-            &lt;span style=&#34;color:#75715e&#34;&gt;// `split` splits a 64-bit number into upper and lower halves
-&lt;/span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;            &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; (b_u, b_l) &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; split(you[i]);
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;for&lt;/span&gt; i &lt;span style=&#34;color:#66d9ef&#34;&gt;in&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;..U256_SIZE {
+      &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;mut&lt;/span&gt; carry &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;u64&lt;/span&gt;;
+      &lt;span style=&#34;color:#75715e&#34;&gt;// `split` splits a 64-bit number into upper and lower halves
+&lt;/span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;      &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; (b_u, b_l) &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; split(you[i]);
 
-            &lt;span style=&#34;color:#66d9ef&#34;&gt;for&lt;/span&gt; j &lt;span style=&#34;color:#66d9ef&#34;&gt;in&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;..U256_SIZE {
-                &lt;span style=&#34;color:#75715e&#34;&gt;// This process is so slow that it&amp;#39;s faster to check for 0 and skip
-&lt;/span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;                &lt;span style=&#34;color:#75715e&#34;&gt;// it if possible.
-&lt;/span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;                &lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; me[j] &lt;span style=&#34;color:#f92672&#34;&gt;!=&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;||&lt;/span&gt; carry &lt;span style=&#34;color:#f92672&#34;&gt;!=&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt; {
-                    &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; a &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; split(me[j]);
+      &lt;span style=&#34;color:#66d9ef&#34;&gt;for&lt;/span&gt; j &lt;span style=&#34;color:#66d9ef&#34;&gt;in&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;..U256_SIZE {
+        &lt;span style=&#34;color:#75715e&#34;&gt;// This process is so slow that it&amp;#39;s faster to check for 0 and skip
+&lt;/span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;        &lt;span style=&#34;color:#75715e&#34;&gt;// it if possible.
+&lt;/span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;        &lt;span style=&#34;color:#66d9ef&#34;&gt;if&lt;/span&gt; me[j] &lt;span style=&#34;color:#f92672&#34;&gt;!=&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;||&lt;/span&gt; carry &lt;span style=&#34;color:#f92672&#34;&gt;!=&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt; {
+          &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; a &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; split(me[j]);
 
-                    &lt;span style=&#34;color:#75715e&#34;&gt;// `mul_u32` multiplies a 64-bit number that&amp;#39;s been split into
-&lt;/span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;                    &lt;span style=&#34;color:#75715e&#34;&gt;// an `(upper, lower)` pair by a 32-bit number to get a 96-bit
-&lt;/span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;                    &lt;span style=&#34;color:#75715e&#34;&gt;// result. Yes, 96-bit (it returns a `(u32, u64)` pair).
-&lt;/span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;                    &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; (c_l, overflow_l) &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; mul_u32(a, b_l, ret[i &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; j]);
+          &lt;span style=&#34;color:#75715e&#34;&gt;// `mul_u32` multiplies a 64-bit number that&amp;#39;s been split into
+&lt;/span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;          &lt;span style=&#34;color:#75715e&#34;&gt;// an `(upper, lower)` pair by a 32-bit number to get a 96-bit
+&lt;/span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;          &lt;span style=&#34;color:#75715e&#34;&gt;// result. Yes, 96-bit (it returns a `(u32, u64)` pair).
+&lt;/span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;          &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; (c_l, overflow_l) &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; mul_u32(a, b_l, ret[i &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; j]);
 
-                    &lt;span style=&#34;color:#75715e&#34;&gt;// Since we have to multiply by a 64-bit number, we have to do
-&lt;/span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;                    &lt;span style=&#34;color:#75715e&#34;&gt;// this twice.
-&lt;/span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;                    &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; (c_u, overflow_u) &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; mul_u32(a, b_u, c_l &lt;span style=&#34;color:#f92672&#34;&gt;&amp;gt;&amp;gt;&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;32&lt;/span&gt;);
-                    ret[i &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; j] &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; (c_l &lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;0xffffffff&lt;/span&gt;) &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; (c_u &lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&amp;lt;&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;32&lt;/span&gt;);
+          &lt;span style=&#34;color:#75715e&#34;&gt;// Since we have to multiply by a 64-bit number, we have to do
+&lt;/span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;          &lt;span style=&#34;color:#75715e&#34;&gt;// this twice.
+&lt;/span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;          &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; (c_u, overflow_u) &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; mul_u32(a, b_u, c_l &lt;span style=&#34;color:#f92672&#34;&gt;&amp;gt;&amp;gt;&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;32&lt;/span&gt;);
+          ret[i &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; j] &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; (c_l &lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;0xffffffff&lt;/span&gt;) &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; (c_u &lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&amp;lt;&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;32&lt;/span&gt;);
 
-                    &lt;span style=&#34;color:#75715e&#34;&gt;// Then we have to do this complex logic to set the result. Gross.
-&lt;/span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;                    &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; res &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; (c_u &lt;span style=&#34;color:#f92672&#34;&gt;&amp;gt;&amp;gt;&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;32&lt;/span&gt;) &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; (overflow_u &lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&amp;lt;&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;32&lt;/span&gt;);
-                    &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; (res, o1) &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; res.overflowing_add(overflow_l &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; carry);
-                    &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; (res, o2) &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; res.overflowing_add(ret[i &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; j &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt;]);
-                    ret[i &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; j &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt;] &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; res;
+          &lt;span style=&#34;color:#75715e&#34;&gt;// Then we have to do this complex logic to set the result. Gross.
+&lt;/span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;          &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; res &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; (c_u &lt;span style=&#34;color:#f92672&#34;&gt;&amp;gt;&amp;gt;&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;32&lt;/span&gt;) &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; (overflow_u &lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&amp;lt;&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;32&lt;/span&gt;);
+          &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; (res, o1) &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; res.overflowing_add(overflow_l &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; carry);
+          &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; (res, o2) &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; res.overflowing_add(ret[i &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; j &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt;]);
+          ret[i &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; j &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt;] &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; res;
 
-                    carry &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; (o1 &lt;span style=&#34;color:#f92672&#34;&gt;|&lt;/span&gt; o2) &lt;span style=&#34;color:#66d9ef&#34;&gt;as&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;u64&lt;/span&gt;;
-                }
-            }
+          carry &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; (o1 &lt;span style=&#34;color:#f92672&#34;&gt;|&lt;/span&gt; o2) &lt;span style=&#34;color:#66d9ef&#34;&gt;as&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;u64&lt;/span&gt;;
         }
-
-        U512(ret)
+      }
     }
+
+    U512(ret)
+  }
 }&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 &lt;p&gt;You don&amp;rsquo;t even have to understand all of the code to see how non-optimal this is. Inspecting the output of the compiler shows that the generated assembly is extremely suboptimal. It does much more work than necessary essentially just to work around limitations in the Rust language. So we wrote an inline assembly version. The important thing about using inline assembly here is that x86_64 natively supports multiplying two 64-bit values into a 128-bit result. When Rust does &lt;code&gt;a * b&lt;/code&gt; when &lt;code&gt;a&lt;/code&gt; and &lt;code&gt;b&lt;/code&gt; are both &lt;code&gt;u64&lt;/code&gt; the CPU actually multiplies them to create a 128-bit result and then Rust just throws away the upper 64 bits. We want the upper 64 in this case though, and the only way to access it efficiently is by using inline assembly.&lt;/p&gt;
 
@@ -78,42 +78,42 @@
 
 &lt;p&gt;All that changed with &lt;a href=&#34;https://blog.rust-lang.org/2018/05/10/Rust-1.26.html&#34;&gt;Rust 1.26&lt;/a&gt;. Now we can do &lt;code&gt;a as u128 * b as u128&lt;/code&gt; and the compiler will use x86_64&amp;rsquo;s native u64-to-u128 multiplication (even though you cast both numbers to &lt;code&gt;u128&lt;/code&gt; it knows that they&amp;rsquo;re &amp;ldquo;really&amp;rdquo; just &lt;code&gt;u64&lt;/code&gt;, you just want a &lt;code&gt;u128&lt;/code&gt; result). That means our code now looks like this:&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;impl&lt;/span&gt; U256 {
-    &lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;full_mul&lt;/span&gt;(self, other: &lt;span style=&#34;color:#a6e22e&#34;&gt;Self&lt;/span&gt;) -&amp;gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;U512&lt;/span&gt; {
-        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; U256(&lt;span style=&#34;color:#66d9ef&#34;&gt;ref&lt;/span&gt; me) &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; self;
-        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; U256(&lt;span style=&#34;color:#66d9ef&#34;&gt;ref&lt;/span&gt; you) &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; other;
-        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;mut&lt;/span&gt; ret &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; [&lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;u64&lt;/span&gt;; U512_SIZE];
+  &lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;full_mul&lt;/span&gt;(self, other: &lt;span style=&#34;color:#a6e22e&#34;&gt;Self&lt;/span&gt;) -&amp;gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;U512&lt;/span&gt; {
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; U256(&lt;span style=&#34;color:#66d9ef&#34;&gt;ref&lt;/span&gt; me) &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; self;
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; U256(&lt;span style=&#34;color:#66d9ef&#34;&gt;ref&lt;/span&gt; you) &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; other;
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;mut&lt;/span&gt; ret &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; [&lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;u64&lt;/span&gt;; U512_SIZE];
 
-        &lt;span style=&#34;color:#66d9ef&#34;&gt;for&lt;/span&gt; i &lt;span style=&#34;color:#66d9ef&#34;&gt;in&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;..U256_SIZE {
-            &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;mut&lt;/span&gt; carry &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;u64&lt;/span&gt;;
-            &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; b &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; you[i];
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;for&lt;/span&gt; i &lt;span style=&#34;color:#66d9ef&#34;&gt;in&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;..U256_SIZE {
+      &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;mut&lt;/span&gt; carry &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;u64&lt;/span&gt;;
+      &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; b &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; you[i];
 
-            &lt;span style=&#34;color:#66d9ef&#34;&gt;for&lt;/span&gt; j &lt;span style=&#34;color:#66d9ef&#34;&gt;in&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;..U256_SIZE {
-                &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; a &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; me[j];
+      &lt;span style=&#34;color:#66d9ef&#34;&gt;for&lt;/span&gt; j &lt;span style=&#34;color:#66d9ef&#34;&gt;in&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;..U256_SIZE {
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; a &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; me[j];
 
-                &lt;span style=&#34;color:#75715e&#34;&gt;// This compiles down to just use x86&amp;#39;s native 128-bit arithmetic
-&lt;/span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;                &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; (hi, low) &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; split_u128(a &lt;span style=&#34;color:#66d9ef&#34;&gt;as&lt;/span&gt; u128 &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt; b &lt;span style=&#34;color:#66d9ef&#34;&gt;as&lt;/span&gt; u128);
+        &lt;span style=&#34;color:#75715e&#34;&gt;// This compiles down to just use x86&amp;#39;s native 128-bit arithmetic
+&lt;/span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; (hi, low) &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; split_u128(a &lt;span style=&#34;color:#66d9ef&#34;&gt;as&lt;/span&gt; u128 &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt; b &lt;span style=&#34;color:#66d9ef&#34;&gt;as&lt;/span&gt; u128);
 
-                &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; overflow &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; {
-                    &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; existing_low &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;mut&lt;/span&gt; ret[i &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; j];
-                    &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; (low, o) &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; low.overflowing_add(&lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt;existing_low);
-                    &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt;existing_low &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; low;
-                    o
-                };
+        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; overflow &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; {
+          &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; existing_low &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;mut&lt;/span&gt; ret[i &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; j];
+          &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; (low, o) &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; low.overflowing_add(&lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt;existing_low);
+          &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt;existing_low &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; low;
+          o
+        };
 
-                carry &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; {
-                    &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; existing_hi &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;mut&lt;/span&gt; ret[i &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; j &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt;];
-                    &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; hi &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; hi &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; overflow &lt;span style=&#34;color:#66d9ef&#34;&gt;as&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;u64&lt;/span&gt;;
-                    &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; (hi, o0) &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; hi.overflowing_add(carry);
-                    &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; (hi, o1) &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; hi.overflowing_add(&lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt;existing_hi);
-                    &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt;existing_hi &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; hi;
+        carry &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; {
+          &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; existing_hi &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;mut&lt;/span&gt; ret[i &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; j &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; &lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt;];
+          &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; hi &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; hi &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; overflow &lt;span style=&#34;color:#66d9ef&#34;&gt;as&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;u64&lt;/span&gt;;
+          &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; (hi, o0) &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; hi.overflowing_add(carry);
+          &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; (hi, o1) &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; hi.overflowing_add(&lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt;existing_hi);
+          &lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt;existing_hi &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; hi;
 
-                    (o0 &lt;span style=&#34;color:#f92672&#34;&gt;|&lt;/span&gt; o1) &lt;span style=&#34;color:#66d9ef&#34;&gt;as&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;u64&lt;/span&gt;
-                }
-            }
+          (o0 &lt;span style=&#34;color:#f92672&#34;&gt;|&lt;/span&gt; o1) &lt;span style=&#34;color:#66d9ef&#34;&gt;as&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;u64&lt;/span&gt;
         }
-
-        U512(ret)
+      }
     }
+
+    U512(ret)
+  }
 }&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 &lt;p&gt;Although it&amp;rsquo;s almost certainly not as fast as using the LLVM-native &lt;code&gt;i256&lt;/code&gt; type, the speed is much, much better. Here it is compared to the original Rust implementation:&lt;/p&gt;
 
@@ -135,129 +135,129 @@
 
 &lt;p&gt;Here&amp;rsquo;s the hand-written assembly. I&amp;rsquo;ve presented it without comment because I want to comment the assembly that is actually emitted by the compiler (since, as you&amp;rsquo;ll see, the &lt;code&gt;asm!&lt;/code&gt; macro hides more than you&amp;rsquo;d expect):&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;impl&lt;/span&gt; U256 {
-    &lt;span style=&#34;color:#e6db74&#34;&gt;/// Multiplies two 256-bit integers to produce full 512-bit integer
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;&lt;/span&gt;    &lt;span style=&#34;color:#e6db74&#34;&gt;/// No overflow possible
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;&lt;/span&gt;    &lt;span style=&#34;color:#66d9ef&#34;&gt;pub&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;full_mul&lt;/span&gt;(self, other: &lt;span style=&#34;color:#a6e22e&#34;&gt;U256&lt;/span&gt;) -&amp;gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;U512&lt;/span&gt; {
-        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; self_t: &lt;span style=&#34;color:#66d9ef&#34;&gt;&amp;amp;&lt;/span&gt;[&lt;span style=&#34;color:#66d9ef&#34;&gt;u64&lt;/span&gt;; &lt;span style=&#34;color:#ae81ff&#34;&gt;4&lt;/span&gt;] &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;self.&lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;;
-        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; other_t: &lt;span style=&#34;color:#66d9ef&#34;&gt;&amp;amp;&lt;/span&gt;[&lt;span style=&#34;color:#66d9ef&#34;&gt;u64&lt;/span&gt;; &lt;span style=&#34;color:#ae81ff&#34;&gt;4&lt;/span&gt;] &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;other.&lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;;
-        &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;mut&lt;/span&gt; result: [&lt;span style=&#34;color:#66d9ef&#34;&gt;u64&lt;/span&gt;; &lt;span style=&#34;color:#ae81ff&#34;&gt;8&lt;/span&gt;] &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;unsafe&lt;/span&gt; { ::core::mem::uninitialized() };
-        &lt;span style=&#34;color:#66d9ef&#34;&gt;unsafe&lt;/span&gt; {
-            asm&lt;span style=&#34;color:#f92672&#34;&gt;!&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                mov $8, %rax
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                mulq $12
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                mov %rax, $0
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                mov %rdx, $1
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                mov $8, %rax
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                mulq $13
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                add %rax, $1
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc $$0, %rdx
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                mov %rdx, $2
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                mov $8, %rax
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                mulq $14
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                add %rax, $2
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc $$0, %rdx
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                mov %rdx, $3
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                mov $8, %rax
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                mulq $15
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                add %rax, $3
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc $$0, %rdx
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                mov %rdx, $4
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                mov $9, %rax
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                mulq $12
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                add %rax, $1
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc %rdx, $2
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc $$0, $3
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc $$0, $4
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                xor $5, $5
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc $$0, $5
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                xor $6, $6
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc $$0, $6
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                xor $7, $7
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc $$0, $7
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                mov $9, %rax
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                mulq $13
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                add %rax, $2
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc %rdx, $3
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc $$0, $4
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc $$0, $5
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc $$0, $6
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc $$0, $7
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                mov $9, %rax
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                mulq $14
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                add %rax, $3
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc %rdx, $4
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc $$0, $5
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc $$0, $6
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc $$0, $7
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                mov $9, %rax
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                mulq $15
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                add %rax, $4
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc %rdx, $5
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc $$0, $6
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc $$0, $7
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                mov $10, %rax
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                mulq $12
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                add %rax, $2
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc %rdx, $3
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc $$0, $4
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc $$0, $5
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc $$0, $6
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc $$0, $7
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                mov $10, %rax
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                mulq $13
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                add %rax, $3
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc %rdx, $4
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc $$0, $5
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc $$0, $6
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc $$0, $7
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                mov $10, %rax
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                mulq $14
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                add %rax, $4
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc %rdx, $5
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc $$0, $6
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc $$0, $7
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                mov $10, %rax
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                mulq $15
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                add %rax, $5
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc %rdx, $6
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc $$0, $7
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                mov $11, %rax
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                mulq $12
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                add %rax, $3
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc %rdx, $4
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc $$0, $5
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc $$0, $6
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc $$0, $7
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                mov $11, %rax
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                mulq $13
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                add %rax, $4
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc %rdx, $5
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc $$0, $6
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc $$0, $7
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                mov $11, %rax
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                mulq $14
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                add %rax, $5
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc %rdx, $6
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc $$0, $7
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                mov $11, %rax
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                mulq $15
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                add %rax, $6
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                adc %rdx, $7
-&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;                &amp;#34;&lt;/span&gt;
-            : &lt;span style=&#34;color:#75715e&#34;&gt;/* $0 */&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;={r8}&amp;#34;&lt;/span&gt;(result[&lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;]),  &lt;span style=&#34;color:#75715e&#34;&gt;/* $1 */&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;={r9}&amp;#34;&lt;/span&gt;(result[&lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt;]),  &lt;span style=&#34;color:#75715e&#34;&gt;/* $2 */&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;={r10}&amp;#34;&lt;/span&gt;(result[&lt;span style=&#34;color:#ae81ff&#34;&gt;2&lt;/span&gt;]),
-              &lt;span style=&#34;color:#75715e&#34;&gt;/* $3 */&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;={r11}&amp;#34;&lt;/span&gt;(result[&lt;span style=&#34;color:#ae81ff&#34;&gt;3&lt;/span&gt;]), &lt;span style=&#34;color:#75715e&#34;&gt;/* $4 */&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;={r12}&amp;#34;&lt;/span&gt;(result[&lt;span style=&#34;color:#ae81ff&#34;&gt;4&lt;/span&gt;]), &lt;span style=&#34;color:#75715e&#34;&gt;/* $5 */&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;={r13}&amp;#34;&lt;/span&gt;(result[&lt;span style=&#34;color:#ae81ff&#34;&gt;5&lt;/span&gt;]),
-              &lt;span style=&#34;color:#75715e&#34;&gt;/* $6 */&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;={r14}&amp;#34;&lt;/span&gt;(result[&lt;span style=&#34;color:#ae81ff&#34;&gt;6&lt;/span&gt;]), &lt;span style=&#34;color:#75715e&#34;&gt;/* $7 */&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;={r15}&amp;#34;&lt;/span&gt;(result[&lt;span style=&#34;color:#ae81ff&#34;&gt;7&lt;/span&gt;])
+  &lt;span style=&#34;color:#e6db74&#34;&gt;/// Multiplies two 256-bit integers to produce full 512-bit integer
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;&lt;/span&gt;  &lt;span style=&#34;color:#e6db74&#34;&gt;/// No overflow possible
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;&lt;/span&gt;  &lt;span style=&#34;color:#66d9ef&#34;&gt;pub&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;full_mul&lt;/span&gt;(self, other: &lt;span style=&#34;color:#a6e22e&#34;&gt;U256&lt;/span&gt;) -&amp;gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;U512&lt;/span&gt; {
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; self_t: &lt;span style=&#34;color:#66d9ef&#34;&gt;&amp;amp;&lt;/span&gt;[&lt;span style=&#34;color:#66d9ef&#34;&gt;u64&lt;/span&gt;; &lt;span style=&#34;color:#ae81ff&#34;&gt;4&lt;/span&gt;] &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;self.&lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;;
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; other_t: &lt;span style=&#34;color:#66d9ef&#34;&gt;&amp;amp;&lt;/span&gt;[&lt;span style=&#34;color:#66d9ef&#34;&gt;u64&lt;/span&gt;; &lt;span style=&#34;color:#ae81ff&#34;&gt;4&lt;/span&gt;] &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;other.&lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;;
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;mut&lt;/span&gt; result: [&lt;span style=&#34;color:#66d9ef&#34;&gt;u64&lt;/span&gt;; &lt;span style=&#34;color:#ae81ff&#34;&gt;8&lt;/span&gt;] &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;unsafe&lt;/span&gt; { ::core::mem::uninitialized() };
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;unsafe&lt;/span&gt; {
+      asm&lt;span style=&#34;color:#f92672&#34;&gt;!&lt;/span&gt;(&lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        mov $8, %rax
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        mulq $12
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        mov %rax, $0
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        mov %rdx, $1
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        mov $8, %rax
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        mulq $13
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        add %rax, $1
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc $$0, %rdx
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        mov %rdx, $2
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        mov $8, %rax
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        mulq $14
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        add %rax, $2
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc $$0, %rdx
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        mov %rdx, $3
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        mov $8, %rax
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        mulq $15
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        add %rax, $3
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc $$0, %rdx
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        mov %rdx, $4
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        mov $9, %rax
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        mulq $12
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        add %rax, $1
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc %rdx, $2
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc $$0, $3
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc $$0, $4
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        xor $5, $5
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc $$0, $5
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        xor $6, $6
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc $$0, $6
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        xor $7, $7
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc $$0, $7
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        mov $9, %rax
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        mulq $13
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        add %rax, $2
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc %rdx, $3
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc $$0, $4
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc $$0, $5
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc $$0, $6
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc $$0, $7
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        mov $9, %rax
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        mulq $14
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        add %rax, $3
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc %rdx, $4
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc $$0, $5
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc $$0, $6
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc $$0, $7
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        mov $9, %rax
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        mulq $15
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        add %rax, $4
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc %rdx, $5
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc $$0, $6
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc $$0, $7
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        mov $10, %rax
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        mulq $12
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        add %rax, $2
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc %rdx, $3
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc $$0, $4
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc $$0, $5
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc $$0, $6
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc $$0, $7
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        mov $10, %rax
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        mulq $13
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        add %rax, $3
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc %rdx, $4
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc $$0, $5
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc $$0, $6
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc $$0, $7
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        mov $10, %rax
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        mulq $14
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        add %rax, $4
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc %rdx, $5
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc $$0, $6
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc $$0, $7
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        mov $10, %rax
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        mulq $15
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        add %rax, $5
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc %rdx, $6
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc $$0, $7
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        mov $11, %rax
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        mulq $12
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        add %rax, $3
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc %rdx, $4
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc $$0, $5
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc $$0, $6
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc $$0, $7
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        mov $11, %rax
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        mulq $13
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        add %rax, $4
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc %rdx, $5
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc $$0, $6
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc $$0, $7
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        mov $11, %rax
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        mulq $14
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        add %rax, $5
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc %rdx, $6
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc $$0, $7
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        mov $11, %rax
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        mulq $15
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        add %rax, $6
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        adc %rdx, $7
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;        &amp;#34;&lt;/span&gt;
+      : &lt;span style=&#34;color:#75715e&#34;&gt;/* $0 */&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;={r8}&amp;#34;&lt;/span&gt;(result[&lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;]),  &lt;span style=&#34;color:#75715e&#34;&gt;/* $1 */&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;={r9}&amp;#34;&lt;/span&gt;(result[&lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt;]),  &lt;span style=&#34;color:#75715e&#34;&gt;/* $2 */&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;={r10}&amp;#34;&lt;/span&gt;(result[&lt;span style=&#34;color:#ae81ff&#34;&gt;2&lt;/span&gt;]),
+        &lt;span style=&#34;color:#75715e&#34;&gt;/* $3 */&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;={r11}&amp;#34;&lt;/span&gt;(result[&lt;span style=&#34;color:#ae81ff&#34;&gt;3&lt;/span&gt;]), &lt;span style=&#34;color:#75715e&#34;&gt;/* $4 */&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;={r12}&amp;#34;&lt;/span&gt;(result[&lt;span style=&#34;color:#ae81ff&#34;&gt;4&lt;/span&gt;]), &lt;span style=&#34;color:#75715e&#34;&gt;/* $5 */&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;={r13}&amp;#34;&lt;/span&gt;(result[&lt;span style=&#34;color:#ae81ff&#34;&gt;5&lt;/span&gt;]),
+        &lt;span style=&#34;color:#75715e&#34;&gt;/* $6 */&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;={r14}&amp;#34;&lt;/span&gt;(result[&lt;span style=&#34;color:#ae81ff&#34;&gt;6&lt;/span&gt;]), &lt;span style=&#34;color:#75715e&#34;&gt;/* $7 */&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;={r15}&amp;#34;&lt;/span&gt;(result[&lt;span style=&#34;color:#ae81ff&#34;&gt;7&lt;/span&gt;])
 
-            : &lt;span style=&#34;color:#75715e&#34;&gt;/* $8 */&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;m&amp;#34;&lt;/span&gt;(self_t[&lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;]),   &lt;span style=&#34;color:#75715e&#34;&gt;/* $9 */&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;m&amp;#34;&lt;/span&gt;(self_t[&lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt;]),   &lt;span style=&#34;color:#75715e&#34;&gt;/* $10 */&lt;/span&gt;  &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;m&amp;#34;&lt;/span&gt;(self_t[&lt;span style=&#34;color:#ae81ff&#34;&gt;2&lt;/span&gt;]),
-              &lt;span style=&#34;color:#75715e&#34;&gt;/* $11 */&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;m&amp;#34;&lt;/span&gt;(self_t[&lt;span style=&#34;color:#ae81ff&#34;&gt;3&lt;/span&gt;]),  &lt;span style=&#34;color:#75715e&#34;&gt;/* $12 */&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;m&amp;#34;&lt;/span&gt;(other_t[&lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;]), &lt;span style=&#34;color:#75715e&#34;&gt;/* $13 */&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;m&amp;#34;&lt;/span&gt;(other_t[&lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt;]),
-              &lt;span style=&#34;color:#75715e&#34;&gt;/* $14 */&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;m&amp;#34;&lt;/span&gt;(other_t[&lt;span style=&#34;color:#ae81ff&#34;&gt;2&lt;/span&gt;]), &lt;span style=&#34;color:#75715e&#34;&gt;/* $15 */&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;m&amp;#34;&lt;/span&gt;(other_t[&lt;span style=&#34;color:#ae81ff&#34;&gt;3&lt;/span&gt;])
-            : &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;rax&amp;#34;&lt;/span&gt;, &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;rdx&amp;#34;&lt;/span&gt;
-            :
-            );
-        }
-
-        U512(result)
+      : &lt;span style=&#34;color:#75715e&#34;&gt;/* $8 */&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;m&amp;#34;&lt;/span&gt;(self_t[&lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;]),   &lt;span style=&#34;color:#75715e&#34;&gt;/* $9 */&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;m&amp;#34;&lt;/span&gt;(self_t[&lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt;]),   &lt;span style=&#34;color:#75715e&#34;&gt;/* $10 */&lt;/span&gt;  &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;m&amp;#34;&lt;/span&gt;(self_t[&lt;span style=&#34;color:#ae81ff&#34;&gt;2&lt;/span&gt;]),
+        &lt;span style=&#34;color:#75715e&#34;&gt;/* $11 */&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;m&amp;#34;&lt;/span&gt;(self_t[&lt;span style=&#34;color:#ae81ff&#34;&gt;3&lt;/span&gt;]),  &lt;span style=&#34;color:#75715e&#34;&gt;/* $12 */&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;m&amp;#34;&lt;/span&gt;(other_t[&lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;]), &lt;span style=&#34;color:#75715e&#34;&gt;/* $13 */&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;m&amp;#34;&lt;/span&gt;(other_t[&lt;span style=&#34;color:#ae81ff&#34;&gt;1&lt;/span&gt;]),
+        &lt;span style=&#34;color:#75715e&#34;&gt;/* $14 */&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;m&amp;#34;&lt;/span&gt;(other_t[&lt;span style=&#34;color:#ae81ff&#34;&gt;2&lt;/span&gt;]), &lt;span style=&#34;color:#75715e&#34;&gt;/* $15 */&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;m&amp;#34;&lt;/span&gt;(other_t[&lt;span style=&#34;color:#ae81ff&#34;&gt;3&lt;/span&gt;])
+      : &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;rax&amp;#34;&lt;/span&gt;, &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;rdx&amp;#34;&lt;/span&gt;
+      :
+      );
     }
+
+    U512(result)
+  }
 }&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 &lt;p&gt;And here&amp;rsquo;s what that generates. I&amp;rsquo;ve heavily commented it so you can understand what&amp;rsquo;s going on even if you&amp;rsquo;ve never touched assembly in your life, but you will need to know basic low-level details like the difference between memory and registers. If you want to get a primer on the structure of a CPU, the &lt;a href=&#34;https://en.wikipedia.org/wiki/Central_processing_unit#Structure_and_implementation&#34;&gt;Wikipedia article on structure and implementation of CPUs&lt;/a&gt; is a good place to start:&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-assembly&#34; data-lang=&#34;assembly&#34;&gt;libbigint.so`disassemble:
