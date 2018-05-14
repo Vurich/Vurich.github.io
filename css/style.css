@@ -29,6 +29,9 @@ header,header.a{
 	html {
 		font-size: 17px;
 	}
+	code {
+		font-size: 12px;
+	}
 	body > * {
 		margin-left: 5.5rem;
 		margin-right: 5.5rem;
@@ -43,6 +46,9 @@ header,header.a{
 @media all and (max-width:580px){
 	html {
 		font-size: 16px;
+	}
+	code {
+		font-size: 10px;
 	}
 	body > * {
 		margin: 0.7rem 1.5rem 0 1.5rem;
@@ -214,6 +220,7 @@ a:hover {
 pre {
 	padding: 5px;
 	margin-bottom: 20px;
+	overflow: auto;
 }
 
 code {
@@ -221,6 +228,7 @@ code {
 	font-size: 14px;
 	line-height: 1.4;
 	display: inline-block;
+	max-width: 100%;
 }
 
 figcaption {
