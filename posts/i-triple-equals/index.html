@@ -63,32 +63,32 @@
   <p>IEEE 754 has been the source of jokes and confusion for a while because of its <a href="https://0.30000000000000004.com/">imprecise representation of decimal numbers</a>, but the truth is that it&rsquo;s an easily-implementable, efficient representation of floating-point numbers that a lot of applications that don&rsquo;t need high precision couldn&rsquo;t easily do without. It&rsquo;s not without its peculiarities though. Or rather, pecularity singular. Specifically, the existence of NaN. NaN is a weird beast, taking up <a href="https://en.wikipedia.org/wiki/Single-precision_floating-point_format#Exponent_encoding">16777208</a> possible values that could have otherwise been used for real data (although some sneaky people get away with using them <a href="https://softwareengineering.stackexchange.com/questions/185406/what-is-the-purpose-of-nan-boxing">for special values</a>) and <a href="https://doc.rust-lang.org/std/cmp/trait.PartialOrd.html">forcing Rust to split its comparison traits into &ldquo;partial&rdquo; and &ldquo;total&rdquo; variants</a>. A lot of developer time and effort has been spent working out precisely how to handle NaN, and this is the story of my recent personal contribution to that time and effort.</p>
 
 <p>This particular story about NaN starts with a strange bug in <a href="https://github.com/paritytech/wasmi"><code>wasmi</code></a>, our experimental WebAssembly interpreter for blockchains here at Parity. The tests were failing on x86 when compiled for 32-bit, but not for 64-bit. After rewriting our WebAssembly test harness to correctly report failures, I narrowed it down to a few test cases that looked something like the following:</p>
-<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-webassembly" data-lang="webassembly">(module
-  ;; ...
-  (func (export &#34;f32.reinterpret_i32&#34;) (param $x i32)
+<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-lisp" data-lang="lisp">(module
+  <span style="color:#75715e">;; ...</span>
+  (func (export <span style="color:#e6db74">&#34;f32.reinterpret_i32&#34;</span>) (param $x i32)
                                        (result f32)
         (f32.reinterpret/i32 (get_local $x)))
-  (func (export &#34;i32.reinterpret_f32&#34;) (param $x f32)
+  (func (export <span style="color:#e6db74">&#34;i32.reinterpret_f32&#34;</span>) (param $x f32)
                                        (result i32)
         (i32.reinterpret/f32 (get_local $x)))
-  ;; ...
+  <span style="color:#75715e">;; ...</span>
 )
 
-;; ...
+<span style="color:#75715e">;; ...</span>
 
-(assert_return (invoke &#34;f32.reinterpret_i32&#34;
+(assert_return (invoke <span style="color:#e6db74">&#34;f32.reinterpret_i32&#34;</span>
                        (i32.const 0x7fa00000))
                (f32.const nan:0x200000)) 
-(assert_return (invoke &#34;f32.reinterpret_i32&#34;
+(assert_return (invoke <span style="color:#e6db74">&#34;f32.reinterpret_i32&#34;</span>
                        (i32.const 0xffa00000))
                (f32.const -nan:0x200000))
-(assert_return (invoke &#34;i32.reinterpret_f32&#34;
+(assert_return (invoke <span style="color:#e6db74">&#34;i32.reinterpret_f32&#34;</span>
                        (f32.const nan:0x200000))
                (i32.const 0x7fa00000)) 
-(assert_return (invoke &#34;i32.reinterpret_f32&#34;
+(assert_return (invoke <span style="color:#e6db74">&#34;i32.reinterpret_f32&#34;</span>
                        (f32.const -nan:0x200000))
                (i32.const 0xffa00000))</code></pre></div>
-<p>All other tests were succeeding, but doing a bitwise cast from integer to float and visa-versa was failing. Furthermore, these tests all succeeded on x86_64 (i.e. when compiled for 64-bit), they only failed on x86 (i.e. when compiled for 32-bit). Also, the difference between the expected value and the received value was only one bit. Instead of returning a float with the bit pattern <code>0x7fa000000</code> it would return <code>0x7fe000000</code> instead. If you&rsquo;ve worked with NaNs before, you might have noticed something:</p>
+<p>All other tests were succeeding, but doing a bitwise cast from integer to float and visa-versa was failing. Furthermore, these tests all succeeded on x86_64 (i.e. when compiled for 64-bit), they only failed on x86 (i.e. when compiled for 32-bit). Finally, the difference between the expected value and the received value was only one bit. Instead of returning a float with the bit pattern <code>0x7fa000000</code> it would return <code>0x7fe000000</code> instead. If you&rsquo;ve worked with NaNs before, you might have noticed something:</p>
 
 <pre><code>Expected: 0b11111111010000000000000000000000000
 Got:      0b11111111110000000000000000000000000

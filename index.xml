@@ -20,32 +20,32 @@
       <description>&lt;p&gt;IEEE 754 has been the source of jokes and confusion for a while because of its &lt;a href=&#34;https://0.30000000000000004.com/&#34;&gt;imprecise representation of decimal numbers&lt;/a&gt;, but the truth is that it&amp;rsquo;s an easily-implementable, efficient representation of floating-point numbers that a lot of applications that don&amp;rsquo;t need high precision couldn&amp;rsquo;t easily do without. It&amp;rsquo;s not without its peculiarities though. Or rather, pecularity singular. Specifically, the existence of NaN. NaN is a weird beast, taking up &lt;a href=&#34;https://en.wikipedia.org/wiki/Single-precision_floating-point_format#Exponent_encoding&#34;&gt;16777208&lt;/a&gt; possible values that could have otherwise been used for real data (although some sneaky people get away with using them &lt;a href=&#34;https://softwareengineering.stackexchange.com/questions/185406/what-is-the-purpose-of-nan-boxing&#34;&gt;for special values&lt;/a&gt;) and &lt;a href=&#34;https://doc.rust-lang.org/std/cmp/trait.PartialOrd.html&#34;&gt;forcing Rust to split its comparison traits into &amp;ldquo;partial&amp;rdquo; and &amp;ldquo;total&amp;rdquo; variants&lt;/a&gt;. A lot of developer time and effort has been spent working out precisely how to handle NaN, and this is the story of my recent personal contribution to that time and effort.&lt;/p&gt;
 
 &lt;p&gt;This particular story about NaN starts with a strange bug in &lt;a href=&#34;https://github.com/paritytech/wasmi&#34;&gt;&lt;code&gt;wasmi&lt;/code&gt;&lt;/a&gt;, our experimental WebAssembly interpreter for blockchains here at Parity. The tests were failing on x86 when compiled for 32-bit, but not for 64-bit. After rewriting our WebAssembly test harness to correctly report failures, I narrowed it down to a few test cases that looked something like the following:&lt;/p&gt;
-&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-webassembly&#34; data-lang=&#34;webassembly&#34;&gt;(module
-  ;; ...
-  (func (export &amp;#34;f32.reinterpret_i32&amp;#34;) (param $x i32)
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-lisp&#34; data-lang=&#34;lisp&#34;&gt;(module
+  &lt;span style=&#34;color:#75715e&#34;&gt;;; ...&lt;/span&gt;
+  (func (export &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;f32.reinterpret_i32&amp;#34;&lt;/span&gt;) (param $x i32)
                                        (result f32)
         (f32.reinterpret/i32 (get_local $x)))
-  (func (export &amp;#34;i32.reinterpret_f32&amp;#34;) (param $x f32)
+  (func (export &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;i32.reinterpret_f32&amp;#34;&lt;/span&gt;) (param $x f32)
                                        (result i32)
         (i32.reinterpret/f32 (get_local $x)))
-  ;; ...
+  &lt;span style=&#34;color:#75715e&#34;&gt;;; ...&lt;/span&gt;
 )
 
-;; ...
+&lt;span style=&#34;color:#75715e&#34;&gt;;; ...&lt;/span&gt;
 
-(assert_return (invoke &amp;#34;f32.reinterpret_i32&amp;#34;
+(assert_return (invoke &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;f32.reinterpret_i32&amp;#34;&lt;/span&gt;
                        (i32.const 0x7fa00000))
                (f32.const nan:0x200000)) 
-(assert_return (invoke &amp;#34;f32.reinterpret_i32&amp;#34;
+(assert_return (invoke &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;f32.reinterpret_i32&amp;#34;&lt;/span&gt;
                        (i32.const 0xffa00000))
                (f32.const -nan:0x200000))
-(assert_return (invoke &amp;#34;i32.reinterpret_f32&amp;#34;
+(assert_return (invoke &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;i32.reinterpret_f32&amp;#34;&lt;/span&gt;
                        (f32.const nan:0x200000))
                (i32.const 0x7fa00000)) 
-(assert_return (invoke &amp;#34;i32.reinterpret_f32&amp;#34;
+(assert_return (invoke &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;i32.reinterpret_f32&amp;#34;&lt;/span&gt;
                        (f32.const -nan:0x200000))
                (i32.const 0xffa00000))&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-&lt;p&gt;All other tests were succeeding, but doing a bitwise cast from integer to float and visa-versa was failing. Furthermore, these tests all succeeded on x86_64 (i.e. when compiled for 64-bit), they only failed on x86 (i.e. when compiled for 32-bit). Also, the difference between the expected value and the received value was only one bit. Instead of returning a float with the bit pattern &lt;code&gt;0x7fa000000&lt;/code&gt; it would return &lt;code&gt;0x7fe000000&lt;/code&gt; instead. If you&amp;rsquo;ve worked with NaNs before, you might have noticed something:&lt;/p&gt;
+&lt;p&gt;All other tests were succeeding, but doing a bitwise cast from integer to float and visa-versa was failing. Furthermore, these tests all succeeded on x86_64 (i.e. when compiled for 64-bit), they only failed on x86 (i.e. when compiled for 32-bit). Finally, the difference between the expected value and the received value was only one bit. Instead of returning a float with the bit pattern &lt;code&gt;0x7fa000000&lt;/code&gt; it would return &lt;code&gt;0x7fe000000&lt;/code&gt; instead. If you&amp;rsquo;ve worked with NaNs before, you might have noticed something:&lt;/p&gt;
 
 &lt;pre&gt;&lt;code&gt;Expected: 0b11111111010000000000000000000000000
 Got:      0b11111111110000000000000000000000000
