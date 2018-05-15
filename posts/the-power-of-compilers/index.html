@@ -58,53 +58,6 @@
 </header>
 
 
-<div id="loadingMask" style="width: 100%; height: 100%; position: fixed; background: #fff;"></div>
-<script>
-function fadeOut(el) {
-  el.style.opacity = 1;
-
-  var last = +new Date();
-  var tick = function() {
-    el.style.opacity = +el.style.opacity - (new Date() - last) / 80;
-    last = +new Date();
-    
-
-    if (el.style.opacity > 0) {
-      (window.requestAnimationFrame && requestAnimationFrame(tick)) || setTimeout(tick, 16);
-    } else {
-      el.style.display='none';
-    }
-  };
-
-  tick();
-}
-
-function ready(fn) {
-    if (document.attachEvent ? document.readyState === "complete" : document.readyState !== "loading") {
-         el = document.getElementById('loadingMask');
-         fadeOut(el);
-        var elements = document.querySelectorAll("img");
-        Array.prototype.forEach.call(elements, function(el, i) {
-            if (el.getAttribute("alt")) {
-                const caption = document.createElement('figcaption');
-                var node = document.createTextNode(el.getAttribute("alt"));
-                caption.appendChild(node);
-                const wrapper = document.createElement('figure');
-                wrapper.className = 'image';
-                el.parentNode.insertBefore(wrapper, el);
-                el.parentNode.removeChild(el);
-                wrapper.appendChild(el);
-                wrapper.appendChild(caption);
-            }
-        });
-
-    } else {
-        document.addEventListener('DOMContentLoaded', fn);
-    }
-}
-window.onload = ready;
-</script>
-
 <div class="content">
   <h1>How a Rust upgrade more than tripled the speed of my code <aside></aside></h1>
   <p>I&rsquo;d like to share a quick story about the sheer power of LLVM and the benefits of using higher-level languages over assembly.</p>
@@ -810,9 +763,6 @@ window.onload = ready;
 <p>My point is not that we should take what we&rsquo;ve learnt from the LLVM-generated code and write a new version of our hand-rolled assembly. The point is that optimising compilers are <em>really good</em>. There are very smart people working on them and computers are really good at this kind of optimisation problem (in the mathematic sense) in a way that humans find quite difficult. It&rsquo;s the job of language designers to give us the tools we need to inform the optimiser as best we can as to what our true intent is, and larger integer sizes are another step towards that. Rust has done a great job of allowing programmers to write programs that are easily understandable by humans and compilers alike, and it&rsquo;s just that power that has largely driven its success.</p>
 
 </div>
-
-
-
 
 <footer>
 	<p>© 2017-2018, all rights reserved.</a>

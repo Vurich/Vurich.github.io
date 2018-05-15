@@ -6,10 +6,195 @@
     <description>Recent content on troubles.md</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Fri, 11 May 2018 16:07:31 +0200</lastBuildDate>
+    <lastBuildDate>Mon, 14 May 2018 14:17:23 +0200</lastBuildDate>
     
         <atom:link href="http://troubles.md/index.xml" rel="self" type="application/rss+xml" />
     
+    
+    <item>
+      <title>Towards a Brighter Future for Smart Contracts</title>
+      <link>http://troubles.md/posts/rust-smart-contracts/</link>
+      <pubDate>Mon, 14 May 2018 14:17:23 +0200</pubDate>
+      
+      <guid>http://troubles.md/posts/rust-smart-contracts/</guid>
+      <description>&lt;p&gt;You might have heard recently that here at Parity, our Kovan testnet for Ethereum now supports &lt;a href=&#34;https://paritytech.io/parity-1-10-opportunity-released/&#34;&gt;smart contracts written in WebAssembly&lt;/a&gt;. Deep in the bowels of the Ethereum Foundation&amp;rsquo;s volcano lair, there begins a movement towards &lt;a href=&#34;https://github.com/ewasm/design&#34;&gt;the same ability being integrated into Ethereum proper&lt;/a&gt;. I realise in hindsight that my phrasing would make that a &amp;ldquo;bowel movement&amp;rdquo;, but I&amp;rsquo;m not changing it. Moving on.&lt;/p&gt;
+
+&lt;p&gt;Currently the only feasible way to write smart contracts for Ethereum is to use a language built for EVM. Solidity, Bamboo, Vyper. These are not general-purpose languages that were adapted for Ethereum, they were built from the ground up to be used on Ethereum. This is because the EVM&amp;rsquo;s execution semantics are, to be diplomatic about it, nuts. It bears a lot of the scars of backwards compatibility, and a lot of peculiarities (like 256-bit arithmetic and a limited selection of types) are something that you can&amp;rsquo;t help but expose to the programmer. Hiding it would be too complex and in an environment with the strict limitations of the Ethereum environment. You have to expose as much of the underlying system as possible in order to let the programmer optimise for gas price. Using a general-purpose language would only lead to mismatches between the target VM and the semantics that the language expects.&lt;/p&gt;
+
+&lt;p&gt;However, this has many downsides too - Solidity, the most popular and well-supported EVM language by far, still has tooling support leagues behind general-purpose languages that were created well after it, such as Go and Rust. There exist linters for Solidity, but the rules they have are relatively simple, and many of them are included as standard in the compilers of more popular languages (requiring no external tooling at all). More complex linting rules could be written, but that takes up valuable developer time and as much as we love to pretend that Ethereum is taking over the world, the truth is that the pool of developers willing and able to write complex tooling for EVM languages is small.&lt;/p&gt;
+
+&lt;p&gt;Not only that, but tooling is especially necessary for Solidity, since it is a language with many footguns and awkward features. It can be easy for smart contract developers both new and old to make &lt;a href=&#34;https://paritytech.io/the-multi-sig-hack-a-postmortem/&#34;&gt;very small mistakes&lt;/a&gt; that cause catastrophic damage.&lt;/p&gt;
+
+&lt;p&gt;The ideal situation would be to have the tooling support and professional language design of general-purpose languages for the blockchain, and that&amp;rsquo;s what &lt;a href=&#34;https://webassembly.org/&#34;&gt;WebAssembly&lt;/a&gt; can help provide. WebAssembly is a VM target that (unlike most virtual machines) generally tries to match the semantics of a CPU architecture like ARM or x86 rather than trying to match the semantics of the language that runs on it. As a result, many languages can compile to it unchanged - since most programming languages are built to expose the semantics of the CPU at some level, having the VM emulate a CPU is a good lowest-common-denominator. It also allows us to use world-class optimising compilers that were built for ISAs like x86 and ARM - very important when you&amp;rsquo;re charging by the instruction. &lt;code&gt;solc&lt;/code&gt; has an &lt;code&gt;--optimize&lt;/code&gt; flag but as far as I can tell all that it does is &lt;a href=&#34;https://github.com/ethereum/solidity/blob/develop/libevmasm/JumpdestRemover.cpp&#34;&gt;remove unused jump targets from the list of allowed targets in the assembly&amp;rsquo;s metadata&lt;/a&gt;, which is more of a security feature than an optimisation. Certainly, it&amp;rsquo;s years behind even hobbyist C compilers and decades behind something like LLVM, which often &lt;a href=&#34;http://troubles.md/posts/the-power-of-compilers/&#34;&gt;writes better assembly than a human hand-compiling the same code&lt;/a&gt;.&lt;/p&gt;
+
+&lt;p&gt;One downside, however, is that these general-purpose languages were not built to write smart contracts in. That, however, can be solved with the right library. Since at Parity we write almost all our code in Rust, you might have gathered that we&amp;rsquo;re quite fond of the language. We&amp;rsquo;ve had experiments in writing smart contracts in Rust for a long time, but the API is still very clunky. You have to manually convert any state that you want to store to and from a 256-bit number (since that&amp;rsquo;s what the EVM stores things as), and since we generate code at compile-time a lot of tools won&amp;rsquo;t work correctly, which negates a large part of the reason that we wanted to use a general-purpose language in the first place! With the current API, to write a simple contract that just does basic arithmetic on a stored number you need to write a lot of code:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;pub&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;mod&lt;/span&gt; foo_contract {
+  &lt;span style=&#34;color:#66d9ef&#34;&gt;use&lt;/span&gt; pwasm_ethereum;
+  &lt;span style=&#34;color:#66d9ef&#34;&gt;use&lt;/span&gt; pwasm_std::&lt;span style=&#34;color:#f92672&#34;&gt;*&lt;/span&gt;;
+  &lt;span style=&#34;color:#66d9ef&#34;&gt;use&lt;/span&gt; pwasm_std::hash::H256;
+  &lt;span style=&#34;color:#66d9ef&#34;&gt;use&lt;/span&gt; bigint::U256;
+
+  &lt;span style=&#34;color:#66d9ef&#34;&gt;use&lt;/span&gt; pwasm_abi_derive::eth_abi;
+
+  &lt;span style=&#34;color:#66d9ef&#34;&gt;static&lt;/span&gt; STATE_KEY: &lt;span style=&#34;color:#a6e22e&#34;&gt;H256&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; H256([
+    &lt;span style=&#34;color:#ae81ff&#34;&gt;2&lt;/span&gt;, &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;, &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;, &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;, &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;, &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;, &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;, &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;, &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;, &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;, &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;, &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;, &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;, &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;, &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;, &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;,
+    &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;, &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;, &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;, &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;, &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;, &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;, &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;, &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;, &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;, &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;, &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;, &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;, &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;, &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;, &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;, &lt;span style=&#34;color:#ae81ff&#34;&gt;0&lt;/span&gt;
+  ]);
+
+  &lt;span style=&#34;color:#75715e&#34;&gt;#[eth_abi(FooEndpoint)]&lt;/span&gt;
+  &lt;span style=&#34;color:#66d9ef&#34;&gt;pub&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;trait&lt;/span&gt; FooInterface {
+    &lt;span style=&#34;color:#e6db74&#34;&gt;/// This is called when the contract gets deployed on-chain
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;&lt;/span&gt;    &lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;constructor&lt;/span&gt;(&lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;mut&lt;/span&gt; self, initial: &lt;span style=&#34;color:#a6e22e&#34;&gt;U256&lt;/span&gt;);
+    &lt;span style=&#34;color:#e6db74&#34;&gt;/// Add a number to the total
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;&lt;/span&gt;    &lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;add&lt;/span&gt;(&lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;mut&lt;/span&gt; self, to_add: &lt;span style=&#34;color:#a6e22e&#34;&gt;U256&lt;/span&gt;);
+    &lt;span style=&#34;color:#e6db74&#34;&gt;/// Get the total
+&lt;/span&gt;&lt;span style=&#34;color:#e6db74&#34;&gt;&lt;/span&gt;    &lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;get&lt;/span&gt;(&lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;mut&lt;/span&gt; self) -&amp;gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;U256&lt;/span&gt;;
+  }
+
+  &lt;span style=&#34;color:#66d9ef&#34;&gt;pub&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;struct&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;FooContract&lt;/span&gt;;
+
+  &lt;span style=&#34;color:#66d9ef&#34;&gt;impl&lt;/span&gt; FooInterface &lt;span style=&#34;color:#66d9ef&#34;&gt;for&lt;/span&gt; FooContract {
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;constructor&lt;/span&gt;(&lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;mut&lt;/span&gt; self, initial: &lt;span style=&#34;color:#a6e22e&#34;&gt;U256&lt;/span&gt;) {
+      pwasm_ethereum::write(
+        &lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;STATE_KEY,
+        &lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;initial.into()
+      );
+    }
+    
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;add&lt;/span&gt;(&lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;mut&lt;/span&gt; self, to_add: &lt;span style=&#34;color:#a6e22e&#34;&gt;U256&lt;/span&gt;) {
+      &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; current_state &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; U256::from(pwasm_ethereum::read(&lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;STATE_KEY));
+
+      &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; new_state &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; current_state &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; to_add;
+      
+      pwasm_ethereum::write(
+          &lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;STATE_KEY, &lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;new_state.into()
+      );
+    }
+
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;get&lt;/span&gt;(&lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;mut&lt;/span&gt; self) -&amp;gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;U256&lt;/span&gt; {
+      pwasm_ethereum::read(&lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;STATE_KEY).into()
+    }
+  }
+}
+
+&lt;span style=&#34;color:#75715e&#34;&gt;// We have to import a trait in order to use `dispatch`
+&lt;/span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;// and `dispatch_ctor`.
+&lt;/span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;use&lt;/span&gt; pwasm_abi::eth::EndpointInterface;
+
+&lt;span style=&#34;color:#75715e&#34;&gt;#[no_mangle]&lt;/span&gt;
+&lt;span style=&#34;color:#66d9ef&#34;&gt;pub&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;call&lt;/span&gt;() {
+  &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;mut&lt;/span&gt; endpoint &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; foo_contract::FooEndpoint::new(
+      foo_contract::FooContract
+  );
+
+  pwasm_ethereum::ret(
+      &lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;endpoint.dispatch(&lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;pwasm_ethereum::input())
+  );
+}
+
+&lt;span style=&#34;color:#75715e&#34;&gt;#[no_mangle]&lt;/span&gt;
+&lt;span style=&#34;color:#66d9ef&#34;&gt;pub&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;deploy&lt;/span&gt;() {
+  &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;mut&lt;/span&gt; endpoint &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; foo_contract::FooEndpoint::new(
+      foo_contract::FooContract
+  );
+
+  endpoint.dispatch_ctor(&lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;pwasm_ethereum::input());
+}&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;This is, in a word, awful. The lines of boilerplate outnumber the lines of real logic by more than 10 to 1 (about 3 lines of real logic buried within over 50 lines of boilerplate). It has a bunch of fluff that has no use at all - the &lt;code&gt;self&lt;/code&gt; parameter is never used because all state is read and written using &lt;code&gt;pwasm_ethereum::read&lt;/code&gt; and &lt;code&gt;pwasm_ethereum::write&lt;/code&gt;. You need to write &lt;code&gt;#[no_mangle]&lt;/code&gt; over the &lt;code&gt;call&lt;/code&gt; and &lt;code&gt;deploy&lt;/code&gt; functions. There is no way that you&amp;rsquo;d figure out the &lt;code&gt;pwasm_ethereum::ret(&amp;amp;endpoint.dispatch(&amp;amp;pwasm_ethereum::input()))&lt;/code&gt; incantation without a tutorial, it&amp;rsquo;s totally undiscoverable. You can&amp;rsquo;t get reliable code completion without compiling the entire binary since it uses a procedural macro (which can run arbitrary code). Not only that, but you need the procedural macro because without it you&amp;rsquo;d have no chance of correctly handling the function calls, except that the only thing that the procedural macro actually does for you is dispatch incoming methods to the right place and deserialize input/serialize output. Another frustrating thing is that although Rust has fantastic support for enforcing immutability (much better than Solidity&amp;rsquo;s equivalent), we never use it here. We just take &lt;code&gt;&amp;amp;mut self&lt;/code&gt; for everything and then never use it. This is a great first start, and it&amp;rsquo;s exciting to have Rust code really running on our testnet, but it&amp;rsquo;s got a long way to go before it is usable for real smart contract development by regular people.&lt;/p&gt;
+
+&lt;p&gt;Last week, however, I started sketching up an idea of what a better smart contract API could look like. I had a few goals:&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;Smart contract code should be easy to read and easy to write.&lt;/li&gt;
+&lt;li&gt;We should be able to catch obvious bugs at compile-time, and it should be easy to write a linter for anything that is impossible to catch at compile-time.&lt;/li&gt;
+&lt;li&gt;It should compile to very compact code to ensure that it&amp;rsquo;s cheap to deploy smart contracts.&lt;/li&gt;
+&lt;li&gt;It should be easy to discover how to use the API even without a tutorial (just using &lt;a href=&#34;https://docs.rs/&#34;&gt;rustdoc&lt;/a&gt;).&lt;/li&gt;
+&lt;li&gt;We should integrate as well with the rest of the ecosystem as possible.&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;With that in mind, here is what I would imagine the previous contract would look like with this new API (the crate name I chose is just &lt;code&gt;pwasm&lt;/code&gt; but that&amp;rsquo;s up for bikeshedding):&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;&lt;span style=&#34;color:#75715e&#34;&gt;#[macro_use]&lt;/span&gt;
+&lt;span style=&#34;color:#66d9ef&#34;&gt;extern&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;crate&lt;/span&gt; pwasm;
+&lt;span style=&#34;color:#75715e&#34;&gt;#[macro_use]&lt;/span&gt;
+&lt;span style=&#34;color:#66d9ef&#34;&gt;extern&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;crate&lt;/span&gt; serde_derive;
+&lt;span style=&#34;color:#66d9ef&#34;&gt;extern&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;crate&lt;/span&gt; serde;
+
+&lt;span style=&#34;color:#66d9ef&#34;&gt;use&lt;/span&gt; pwasm::{Contract, ContractDef};
+
+&lt;span style=&#34;color:#75715e&#34;&gt;#[derive(Serialize, Deserialize)]&lt;/span&gt;
+&lt;span style=&#34;color:#66d9ef&#34;&gt;pub&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;struct&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;State&lt;/span&gt; {
+  current: &lt;span style=&#34;color:#a6e22e&#34;&gt;U256&lt;/span&gt;,
+}
+
+contract&lt;span style=&#34;color:#f92672&#34;&gt;!&lt;/span&gt;(foo_contract);
+
+&lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;foo_contract&lt;/span&gt;() -&amp;gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;impl&lt;/span&gt; ContractDef&lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt;State&lt;span style=&#34;color:#f92672&#34;&gt;&amp;gt;&lt;/span&gt; {
+  messages&lt;span style=&#34;color:#f92672&#34;&gt;!&lt;/span&gt; {
+    Add(U256);
+    Get() -&amp;gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;U256&lt;/span&gt;;
+  }
+
+  Contract::new()
+    .constructor(&lt;span style=&#34;color:#f92672&#34;&gt;|&lt;/span&gt;_txdata, initial&lt;span style=&#34;color:#f92672&#34;&gt;|&lt;/span&gt; State {
+      current: &lt;span style=&#34;color:#a6e22e&#34;&gt;initial&lt;/span&gt;,
+    })
+    &lt;span style=&#34;color:#75715e&#34;&gt;// These type annotations aren&amp;#39;t necessary, they&amp;#39;re just
+&lt;/span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;    &lt;span style=&#34;color:#75715e&#34;&gt;// to show that we don&amp;#39;t receive a mutable reference to the
+&lt;/span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;    &lt;span style=&#34;color:#75715e&#34;&gt;// state in the `Get` method.
+&lt;/span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;    .on_msg_mut::&lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt;Add&lt;span style=&#34;color:#f92672&#34;&gt;&amp;gt;&lt;/span&gt;(&lt;span style=&#34;color:#f92672&#34;&gt;|&lt;/span&gt;_env: &lt;span style=&#34;color:#66d9ef&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;mut&lt;/span&gt; EthEnv, state: &lt;span style=&#34;color:#66d9ef&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;mut&lt;/span&gt; State, to_add&lt;span style=&#34;color:#f92672&#34;&gt;|&lt;/span&gt; {
+      state.current &lt;span style=&#34;color:#f92672&#34;&gt;+=&lt;/span&gt; to_add;
+    })
+    .on_msg::&lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt;Get&lt;span style=&#34;color:#f92672&#34;&gt;&amp;gt;&lt;/span&gt;(&lt;span style=&#34;color:#f92672&#34;&gt;|&lt;/span&gt;_env: &lt;span style=&#34;color:#66d9ef&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;EthEnv&lt;/span&gt;, state: &lt;span style=&#34;color:#66d9ef&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span style=&#34;color:#a6e22e&#34;&gt;State&lt;/span&gt;, ()&lt;span style=&#34;color:#f92672&#34;&gt;|&lt;/span&gt; state.current.clone())
+}&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Much nicer, I think. It may look weird at first since it no longer looks like defining functions on a type, but there&amp;rsquo;s a method to my decision to ditch, um, methods. For a start, using types to represent methods makes it easier to define idiomatic interfaces to external contracts. If an external contract uses a different naming convention to Rust&amp;rsquo;s (which if you&amp;rsquo;re calling a Solidity contract, it probably does) you don&amp;rsquo;t have to have the method names exposed to Rust directly match up with the external contract&amp;rsquo;s. Doing it this way also enables us to better utilise Rust&amp;rsquo;s tooling, we get documentation for free (in the form of &lt;code&gt;rustdoc&lt;/code&gt;), whereas we&amp;rsquo;d have to manually maintain documentation on the syntax for our macro. Adding new features can be done by libraries using the trait system, whereas prodedural macros don&amp;rsquo;t compose by default. For example, you could implement a library for defining contracts as state machines without touching the code of &lt;code&gt;pwasm&lt;/code&gt; itself.&lt;/p&gt;
+
+&lt;p&gt;It uses &lt;code&gt;serde&lt;/code&gt; (the standard serialisation and deserialisation framework for Rust) instead of hand-rolling our own serialisation. Hand-rolling serialisation is fine for our own types, but it means that if we want to allow users to serialise their own types we either need them to write a lot of boilerplate or we need to write an equivalent of &lt;code&gt;serde_derive&lt;/code&gt; for our own serialisation method, duplicating work. It uses Rust&amp;rsquo;s inbuilt mutability guarantees to enforce that we don&amp;rsquo;t do any mutation in the functions that don&amp;rsquo;t need it. It&amp;rsquo;s immutable-by-default, you have to write &lt;code&gt;_mut&lt;/code&gt; if you want a mutable method. This can prevent bugs caused by accidental mutation and can also allow us to avoid spending gas to save the state if we know that the method can&amp;rsquo;t mutate it. The &lt;code&gt;contract&lt;/code&gt; and &lt;code&gt;messages&lt;/code&gt; macros are just &lt;code&gt;macro_rules!&lt;/code&gt; macros, and you can quite simply write contracts without them. They just expand to something like the following:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;&lt;span style=&#34;color:#75715e&#34;&gt;// ...
+&lt;/span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;
+&lt;span style=&#34;color:#75715e&#34;&gt;#[no_mangle]&lt;/span&gt;
+&lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;__pwasm_ethereum_call&lt;/span&gt;() {
+  pwasm::ret(
+    foo_contract().call(pwasm::read_state(), pwasm::input())
+  );
+}
+
+&lt;span style=&#34;color:#75715e&#34;&gt;#[no_mangle]&lt;/span&gt;
+&lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;__pwasm_ethereum_deploy&lt;/span&gt;() {
+  &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; state &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; foo_contract().construct(pwasm::input());
+  pwasm::write_state(state);
+}
+
+&lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;foo_contract&lt;/span&gt;() -&amp;gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;impl&lt;/span&gt; ContractDef&lt;span style=&#34;color:#f92672&#34;&gt;&amp;lt;&lt;/span&gt;State&lt;span style=&#34;color:#f92672&#34;&gt;&amp;gt;&lt;/span&gt; {
+  &lt;span style=&#34;color:#66d9ef&#34;&gt;struct&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;Add&lt;/span&gt;;
+  &lt;span style=&#34;color:#66d9ef&#34;&gt;struct&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;Get&lt;/span&gt;;
+
+  &lt;span style=&#34;color:#66d9ef&#34;&gt;impl&lt;/span&gt; pwasm::Message &lt;span style=&#34;color:#66d9ef&#34;&gt;for&lt;/span&gt; Add {
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;type&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;Input&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; U256;
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;type&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;Output&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; ();
+    
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;const&lt;/span&gt; NAME: &lt;span style=&#34;color:#66d9ef&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;str&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Add&amp;#34;&lt;/span&gt;;
+  }
+
+  &lt;span style=&#34;color:#66d9ef&#34;&gt;impl&lt;/span&gt; pwasm::Message &lt;span style=&#34;color:#66d9ef&#34;&gt;for&lt;/span&gt; Get {
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;type&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;Input&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; ();
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;type&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;Output&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; U256;
+    
+    &lt;span style=&#34;color:#66d9ef&#34;&gt;const&lt;/span&gt; NAME: &lt;span style=&#34;color:#66d9ef&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span style=&#34;color:#66d9ef&#34;&gt;str&lt;/span&gt; &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; &lt;span style=&#34;color:#e6db74&#34;&gt;&amp;#34;Get&amp;#34;&lt;/span&gt;;
+  }
+
+  &lt;span style=&#34;color:#75715e&#34;&gt;// ...
+&lt;/span&gt;&lt;span style=&#34;color:#75715e&#34;&gt;&lt;/span&gt;}&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Additionally, the contract&amp;rsquo;s methods take a &lt;code&gt;EthEnv&lt;/code&gt; parameter which represents the blockchain environment itself, and can be used to (for example) get the current block header or send messages to another contract. We can use Rust&amp;rsquo;s mutability guarantees again to enforce that an immutable method can&amp;rsquo;t call a mutable method or suchlike. We also use a simple type-level state machine to make sure you write precisely one constructor (although it&amp;rsquo;s not yet possible in Rust&amp;rsquo;s type system to prevent you writing two handlers for the same message).&lt;/p&gt;
+
+&lt;p&gt;Another benefit of so much being regular Rust code is that you can go to &lt;code&gt;Contract&lt;/code&gt; page in the documentation and quite easily infer how to write a contract from that alone. Since you need to go through the &lt;code&gt;state&lt;/code&gt; parameter to access the contract&amp;rsquo;s state and the &lt;code&gt;env&lt;/code&gt; parameter to access the blockchain, it&amp;rsquo;s easy to work out the complete set of everything a smart contract can do just by going to the documentation page for &lt;code&gt;EthEnv&lt;/code&gt;. There are no top-level functions that manipulate global state and if you get anything wrong the compiler will give you a nice error message.&lt;/p&gt;
+
+&lt;p&gt;Finally, it compiles to code without any unnecessary overhead because it extensively uses Rust&amp;rsquo;s generics and because &lt;code&gt;constructor&lt;/code&gt;, &lt;code&gt;on_msg&lt;/code&gt; and &lt;code&gt;on_msg_mut&lt;/code&gt; are all &lt;code&gt;const fn&lt;/code&gt;s. The API has no overhead compared to writing the verbose version that uses the existing API.&lt;/p&gt;
+
+&lt;p&gt;With this abstraction as a base it should be easy to implement other functionality on top. For example, if you need a database and you don&amp;rsquo;t want to have to serialise and deserialise the entire thing every time you access it (for example, if you&amp;rsquo;re creating an ERC20 token and you want to store the mapping between addresses and balances) you could have a &lt;code&gt;Database&lt;/code&gt; type that internally uses the raw calls to &lt;code&gt;pwasm_ethereum::read&lt;/code&gt; and &lt;code&gt;pwasm_ethereum::write&lt;/code&gt; but externally behaves more like Rust&amp;rsquo;s stdlib &lt;code&gt;HashMap&lt;/code&gt; type. This would also allow you to do things not possible in the current API, like having two databases that can have overlapping keys (by using a unique nonce per instance of the &lt;code&gt;Database&lt;/code&gt; type). That could be implemented as a library on top of the API I&amp;rsquo;ve described here with relatively little code.&lt;/p&gt;
+
+&lt;p&gt;I should say that nothing that you see here is set in stone. I&amp;rsquo;ve just been playing with the idea of writing a new API for smart contracts and I want to get some feedback from real smart contract developers (which I am not one of, I&amp;rsquo;m a Rust core developer) and from other members of the community. I&amp;rsquo;d love to hear your ideas for anything that could be improved here, especially with regards to ergonomics. I&amp;rsquo;m not trying to make it look like Solidity code, I&amp;rsquo;m just trying to make it safe and readable. A simple-working-but-extremely-incomplete implementation that doesn&amp;rsquo;t yet run on the actual blockchain is on my GitHub account &lt;a href=&#34;https://github.com/Vurich/wasm-contract-api&#34;&gt;here&lt;/a&gt; if you would like to see how this could be implemented.&lt;/p&gt;
+</description>
+    </item>
     
     <item>
       <title>How a Rust upgrade more than tripled the speed of my code</title>
