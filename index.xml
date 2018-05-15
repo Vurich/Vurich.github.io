@@ -97,7 +97,7 @@ fn it_works() {
 }
 &lt;/code&gt;&lt;/pre&gt;
 
-&lt;p&gt;The &lt;code&gt;black_box&lt;/code&gt;/&lt;code&gt;bb&lt;/code&gt; function just ensures that the compiler doesn&amp;rsquo;t optimise anything out. This succeeds, though, even on x86 (i.e. 32-bit, the same architecture where our &lt;code&gt;wasmi&lt;/code&gt; test suite fails). So I checked the disassembly:&lt;/p&gt;
+&lt;p&gt;The &lt;code&gt;black_box&lt;/code&gt;/&lt;code&gt;bb&lt;/code&gt; function just ensures that the compiler doesn&amp;rsquo;t optimise anything out. This particular test succeeds, though, even on x86 (i.e. 32-bit, the same architecture where our &lt;code&gt;wasmi&lt;/code&gt; test suite fails). So I went back to &lt;code&gt;f32::from_bits&lt;/code&gt; in the compiled output for &lt;code&gt;wasmi&lt;/code&gt; and disassembled it with LLDB.&lt;/p&gt;
 
 &lt;pre&gt;&lt;code&gt;core::f32::&amp;lt;impl core::num::Float for f32&amp;gt;::from_bits:
   pushl  %ebp
