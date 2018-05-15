@@ -248,7 +248,7 @@ fn it_works() {
       &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; new_state &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; current_state &lt;span style=&#34;color:#f92672&#34;&gt;+&lt;/span&gt; to_add;
       
       pwasm_ethereum::write(
-          &lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;STATE_KEY, &lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;new_state.into()
+        &lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;STATE_KEY, &lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;new_state.into()
       );
     }
 
@@ -265,18 +265,18 @@ fn it_works() {
 &lt;span style=&#34;color:#75715e&#34;&gt;#[no_mangle]&lt;/span&gt;
 &lt;span style=&#34;color:#66d9ef&#34;&gt;pub&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;call&lt;/span&gt;() {
   &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;mut&lt;/span&gt; endpoint &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; foo_contract::FooEndpoint::new(
-      foo_contract::FooContract
+    foo_contract::FooContract
   );
 
   pwasm_ethereum::ret(
-      &lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;endpoint.dispatch(&lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;pwasm_ethereum::input())
+    &lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;endpoint.dispatch(&lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;pwasm_ethereum::input())
   );
 }
 
 &lt;span style=&#34;color:#75715e&#34;&gt;#[no_mangle]&lt;/span&gt;
 &lt;span style=&#34;color:#66d9ef&#34;&gt;pub&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#a6e22e&#34;&gt;deploy&lt;/span&gt;() {
   &lt;span style=&#34;color:#66d9ef&#34;&gt;let&lt;/span&gt; &lt;span style=&#34;color:#66d9ef&#34;&gt;mut&lt;/span&gt; endpoint &lt;span style=&#34;color:#f92672&#34;&gt;=&lt;/span&gt; foo_contract::FooEndpoint::new(
-      foo_contract::FooContract
+    foo_contract::FooContract
   );
 
   endpoint.dispatch_ctor(&lt;span style=&#34;color:#f92672&#34;&gt;&amp;amp;&lt;/span&gt;pwasm_ethereum::input());

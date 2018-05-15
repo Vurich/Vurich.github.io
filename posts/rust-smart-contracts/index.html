@@ -111,7 +111,7 @@
       <span style="color:#66d9ef">let</span> new_state <span style="color:#f92672">=</span> current_state <span style="color:#f92672">+</span> to_add;
       
       pwasm_ethereum::write(
-          <span style="color:#f92672">&amp;</span>STATE_KEY, <span style="color:#f92672">&amp;</span>new_state.into()
+        <span style="color:#f92672">&amp;</span>STATE_KEY, <span style="color:#f92672">&amp;</span>new_state.into()
       );
     }
 
@@ -128,18 +128,18 @@
 <span style="color:#75715e">#[no_mangle]</span>
 <span style="color:#66d9ef">pub</span> <span style="color:#66d9ef">fn</span> <span style="color:#a6e22e">call</span>() {
   <span style="color:#66d9ef">let</span> <span style="color:#66d9ef">mut</span> endpoint <span style="color:#f92672">=</span> foo_contract::FooEndpoint::new(
-      foo_contract::FooContract
+    foo_contract::FooContract
   );
 
   pwasm_ethereum::ret(
-      <span style="color:#f92672">&amp;</span>endpoint.dispatch(<span style="color:#f92672">&amp;</span>pwasm_ethereum::input())
+    <span style="color:#f92672">&amp;</span>endpoint.dispatch(<span style="color:#f92672">&amp;</span>pwasm_ethereum::input())
   );
 }
 
 <span style="color:#75715e">#[no_mangle]</span>
 <span style="color:#66d9ef">pub</span> <span style="color:#66d9ef">fn</span> <span style="color:#a6e22e">deploy</span>() {
   <span style="color:#66d9ef">let</span> <span style="color:#66d9ef">mut</span> endpoint <span style="color:#f92672">=</span> foo_contract::FooEndpoint::new(
-      foo_contract::FooContract
+    foo_contract::FooContract
   );
 
   endpoint.dispatch_ctor(<span style="color:#f92672">&amp;</span>pwasm_ethereum::input());
