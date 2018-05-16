@@ -23,6 +23,15 @@
 	
 	<meta name="article:tag" content="">
 	<link rel="stylesheet" type="text/css" href="http://troubles.md/css/style.css">
+	<script async>
+		window.onload = function() {
+			var possibilities = [
+				 "A high-level view of low-level code",  "Writing words and reading DWORDS",  "A blog about bits and the frobbing thereof",  "Don\x27t `panic!`", 
+			];
+
+			document.getElementById('subtitle').innerHTML = ' - ' + possibilities[Math.floor(possibilities.length * Math.random())];
+		};
+	</script>
 </head>
 
 <body>
@@ -30,6 +39,7 @@
 <header>
 	
 	<a href="http://troubles.md/" class="title"><strong>troubles.md</strong></a>
+	<p id="subtitle" class="subtitle"> - A high-level view of low-level code</p>
 	
 	
 	
