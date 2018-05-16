@@ -17,9 +17,9 @@
       <pubDate>Tue, 15 May 2018 12:19:37 +0200</pubDate>
       
       <guid>http://troubles.md/posts/i-triple-equals/</guid>
-      <description>&lt;p&gt;IEEE 754 has been the source of jokes and confusion for a while because of its &lt;a href=&#34;https://0.30000000000000004.com/&#34;&gt;imprecise representation of decimal numbers&lt;/a&gt;, but the truth is that it&amp;rsquo;s an easily-implementable, efficient representation of floating-point numbers that a lot of applications that don&amp;rsquo;t need high precision couldn&amp;rsquo;t easily do without. It&amp;rsquo;s not without its peculiarities though. Or rather, pecularity singular. Specifically, the existence of NaN. NaN is a weird beast, taking up &lt;a href=&#34;https://en.wikipedia.org/wiki/Single-precision_floating-point_format#Exponent_encoding&#34;&gt;16777208&lt;/a&gt; possible values that could have otherwise been used for real data (although some sneaky people get away with using them &lt;a href=&#34;https://softwareengineering.stackexchange.com/questions/185406/what-is-the-purpose-of-nan-boxing&#34;&gt;for special values&lt;/a&gt;) and &lt;a href=&#34;https://doc.rust-lang.org/std/cmp/trait.PartialOrd.html&#34;&gt;forcing Rust to split its comparison traits into &amp;ldquo;partial&amp;rdquo; and &amp;ldquo;total&amp;rdquo; variants&lt;/a&gt;. A lot of developer time and effort has been spent working out precisely how to handle NaN, and this is the story of my recent personal contribution to that time and effort.&lt;/p&gt;
+      <description>&lt;p&gt;IEEE 754 has been the source of jokes and confusion for a while because of its &lt;a href=&#34;https://0.30000000000000004.com/&#34;&gt;imprecise representation of decimal numbers&lt;/a&gt;, but the truth is that it&amp;rsquo;s an easily-implementable, efficient representation of floating-point numbers and a lot of applications that don&amp;rsquo;t need high precision couldn&amp;rsquo;t easily do without it. It&amp;rsquo;s not without its peculiarities though. Or rather, pecularity, singular. Specifically, the existence of NaN. NaN is a weird beast, taking up &lt;a href=&#34;https://en.wikipedia.org/wiki/Single-precision_floating-point_format#Exponent_encoding&#34;&gt;16777208&lt;/a&gt; possible values that could have otherwise been used for real data (although some sneaky people get away with using them &lt;a href=&#34;https://softwareengineering.stackexchange.com/questions/185406/what-is-the-purpose-of-nan-boxing&#34;&gt;for special values&lt;/a&gt;) and &lt;a href=&#34;https://doc.rust-lang.org/std/cmp/trait.PartialOrd.html&#34;&gt;forcing Rust to split its comparison traits into &amp;ldquo;partial&amp;rdquo; and &amp;ldquo;total&amp;rdquo; variants&lt;/a&gt;. A lot of developer time and effort has been spent working out precisely how to handle NaN, and this is the story of my recent personal contribution to that time and effort.&lt;/p&gt;
 
-&lt;p&gt;This particular story about NaN starts with a strange bug in &lt;a href=&#34;https://github.com/paritytech/wasmi&#34;&gt;&lt;code&gt;wasmi&lt;/code&gt;&lt;/a&gt;, our experimental WebAssembly interpreter for blockchains here at &lt;a href=&#34;https://github.com/paritytech/&#34;&gt;Parity&lt;/a&gt;. The tests were failing on x86 when compiled for 32-bit, but not for 64-bit. After rewriting our WebAssembly test harness to correctly report failures, I narrowed it down to a few test cases that looked something like the following:&lt;/p&gt;
+&lt;p&gt;This particular story about NaN starts with a strange bug in &lt;a href=&#34;https://github.com/paritytech/wasmi&#34;&gt;&lt;code&gt;wasmi&lt;/code&gt;&lt;/a&gt;, our experimental WebAssembly interpreter for blockchains here at &lt;a href=&#34;https://github.com/paritytech/&#34;&gt;Parity&lt;/a&gt;. The tests were failing when compiled for 32-bit, but not for 64-bit. After rewriting our WebAssembly test harness to correctly report failures, I narrowed it down to a few test cases that looked something like the following:&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-lisp&#34; data-lang=&#34;lisp&#34;&gt;(&lt;span style=&#34;color:#434f54&#34;&gt;module&lt;/span&gt;
   &lt;span style=&#34;color:#95a5a6&#34;&gt;;; ...&lt;/span&gt;
   (&lt;span style=&#34;color:#434f54&#34;&gt;func&lt;/span&gt; (&lt;span style=&#34;color:#434f54&#34;&gt;export&lt;/span&gt; &lt;span style=&#34;color:#7f8c8d&#34;&gt;&amp;#34;f32.reinterpret_i32&amp;#34;&lt;/span&gt;) (&lt;span style=&#34;color:#434f54&#34;&gt;param&lt;/span&gt; &lt;span style=&#34;color:#434f54&#34;&gt;$x&lt;/span&gt; &lt;span style=&#34;color:#434f54&#34;&gt;i32&lt;/span&gt;)
@@ -45,14 +45,14 @@
 (&lt;span style=&#34;color:#434f54&#34;&gt;assert_return&lt;/span&gt; (&lt;span style=&#34;color:#434f54&#34;&gt;invoke&lt;/span&gt; &lt;span style=&#34;color:#7f8c8d&#34;&gt;&amp;#34;i32.reinterpret_f32&amp;#34;&lt;/span&gt;
                        (&lt;span style=&#34;color:#434f54&#34;&gt;f32.const&lt;/span&gt; &lt;span style=&#34;color:#434f54&#34;&gt;-nan:0x200000&lt;/span&gt;))
                (&lt;span style=&#34;color:#434f54&#34;&gt;i32.const&lt;/span&gt; &lt;span style=&#34;color:#434f54&#34;&gt;0xffa00000&lt;/span&gt;))&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-&lt;p&gt;All other tests were succeeding, but doing a bitwise cast from integer to float and visa-versa was failing. Furthermore, these tests all succeeded on x86_64 (i.e. when compiled for 64-bit), they only failed on x86 (i.e. when compiled for 32-bit). Finally, the difference between the expected value and the received value was only one bit. Instead of returning a float with the bit pattern &lt;code&gt;0x7fa000000&lt;/code&gt; it would return &lt;code&gt;0x7fe000000&lt;/code&gt; instead. If you&amp;rsquo;ve worked with NaNs before, you might have noticed something:&lt;/p&gt;
+&lt;p&gt;All other tests were succeeding, but doing a bitwise cast from integer to float and visa-versa was failing. Furthermore, these tests all succeeded on x86_64 (i.e. when compiled for 64-bit), they only failed on x86 (i.e. when compiled for 32-bit). Lastly, the difference between the expected value and the received value was only one bit. Instead of returning a float with the bit pattern &lt;code&gt;0x7fa000000&lt;/code&gt; it would return &lt;code&gt;0x7fe000000&lt;/code&gt; instead. If you&amp;rsquo;ve worked with NaNs before, you might have noticed something:&lt;/p&gt;
 
 &lt;pre&gt;&lt;code&gt;Expected: 0b11111111010000000000000000000000000
 Got:      0b11111111110000000000000000000000000
                     ^ This bit is different
 &lt;/code&gt;&lt;/pre&gt;
 
-&lt;p&gt;That&amp;rsquo;s right, it&amp;rsquo;s the &lt;a href=&#34;https://en.wikipedia.org/wiki/NaN#Signaling_NaN&#34;&gt;quiet bit&lt;/a&gt;! For those unaware, the quiet bit determines whether or not the number should raise an exception when you attempt to use it. This is because the &lt;a href=&#34;https://en.wikipedia.org/wiki/IEEE_754&#34;&gt;IEEE 754 standard&lt;/a&gt; was written at a time when it wasn&amp;rsquo;t necessarily expected that a programming language would include exceptions, and so the standard includes provisions to allow hardware-level exceptions when, for example, dividing by zero. The idea is that when the hardware tries to execute an invalid floating point operation (like division by zero) it is allowed to generate a &amp;ldquo;signalling NaN&amp;rdquo;, or sNaN. This is what we see above, the quiet bit is set to 0, meaning that the NaN is signalling&lt;sup class=&#34;footnote-ref&#34; id=&#34;fnref:ieee-x86&#34;&gt;&lt;a href=&#34;#fn:ieee-x86&#34;&gt;1&lt;/a&gt;&lt;/sup&gt;. When you try to use this value (for example, by multiplying it with another number) the hardware is allowed to generate an exception and then return a &amp;ldquo;quiet NaN&amp;rdquo;, or qNaN, which has the quiet bit set to 1. I say &amp;ldquo;allowed to&amp;rdquo; rather than &amp;ldquo;does&amp;rdquo; or &amp;ldquo;should&amp;rdquo; because IEEE 754 leaves this unspecified, and in fact as far as I can tell x86 and ARM never generate sNaNs, the only way to create them is to reinterpret an integer with the signalling bit set as a float. Originally, I thought the source of the problem was obvious: &lt;a href=&#34;https://github.com/rust-lang/rust/pull/39271&#34;&gt;Rust was quieting NaN when casting an int to a float&lt;/a&gt;. I remember seeing &lt;a href=&#34;https://github.com/tomaka&#34;&gt;tomaka&lt;/a&gt;&amp;rsquo;s&lt;sup class=&#34;footnote-ref&#34; id=&#34;fnref:troubles&#34;&gt;&lt;a href=&#34;#fn:troubles&#34;&gt;2&lt;/a&gt;&lt;/sup&gt; talk at RustFest 2017 on binding C libraries where he mentioned that Rust guarantees that all NaNs are quiet and that you have to explicitly handle that when using floats returned from C (where sNaNs are allowed). So I checked the source of &lt;code&gt;f32::from_bits&lt;/code&gt; and&amp;hellip; &lt;a href=&#34;https://github.com/rust-lang/rust/blob/8010604b2d888ac839147fe27de76cdcc713aa1b/src/libcore/num/f32.rs#L270-L275&#34;&gt;nope&lt;/a&gt;. It just does a normal reintepret. Turn&amp;rsquo;s out tomaka&amp;rsquo;s advice was out of date, and Rust &lt;a href=&#34;https://github.com/rust-lang/rust/pull/46012/commits/439576fd7bedf741db5fb6a21c902e858d51f2a0&#34;&gt;now allows sNaNs&lt;/a&gt;&lt;/p&gt;
+&lt;p&gt;That&amp;rsquo;s right, it&amp;rsquo;s the &lt;a href=&#34;https://en.wikipedia.org/wiki/NaN#Signaling_NaN&#34;&gt;quiet bit&lt;/a&gt;! For those unaware, the quiet bit determines whether or not the number should raise an exception when you attempt to use it. This is because the &lt;a href=&#34;https://en.wikipedia.org/wiki/IEEE_754&#34;&gt;IEEE 754 standard&lt;/a&gt; was written at a time when it wasn&amp;rsquo;t necessarily expected that a programming language would include exceptions. The standard includes provisions to allow hardware-level exceptions when, for example, dividing by zero. The idea is that when the hardware tries to execute an invalid floating point operation (like division by zero) it is allowed to generate a &amp;ldquo;signalling NaN&amp;rdquo;, or sNaN. This is what we see above - the quiet bit is set to 0, meaning that the NaN is signalling&lt;sup class=&#34;footnote-ref&#34; id=&#34;fnref:ieee-x86&#34;&gt;&lt;a href=&#34;#fn:ieee-x86&#34;&gt;1&lt;/a&gt;&lt;/sup&gt;. When you try to use this value (for example, by multiplying it with another number) the hardware is allowed to generate an exception and then return a &amp;ldquo;quiet NaN&amp;rdquo;, or qNaN, which has the quiet bit set to 1. I say &amp;ldquo;allowed to&amp;rdquo; rather than &amp;ldquo;does&amp;rdquo; or &amp;ldquo;should&amp;rdquo; because IEEE 754 leaves this unspecified, and in fact as far as I can tell x86 and ARM never generate sNaNs, the only way to create them is to reinterpret an integer with the signalling bit set. Originally, I thought the source of the problem was obvious: &lt;a href=&#34;https://github.com/rust-lang/rust/pull/39271&#34;&gt;Rust was quieting NaN when casting an int to a float&lt;/a&gt;. I remember seeing &lt;a href=&#34;https://github.com/tomaka&#34;&gt;tomaka&lt;/a&gt;&amp;rsquo;s&lt;sup class=&#34;footnote-ref&#34; id=&#34;fnref:troubles&#34;&gt;&lt;a href=&#34;#fn:troubles&#34;&gt;2&lt;/a&gt;&lt;/sup&gt; talk at RustFest 2017 on binding C libraries where he mentioned that Rust guarantees that all NaNs are quiet and that you have to explicitly handle that when using floats returned from C (where sNaNs are allowed). So I checked the source of &lt;code&gt;f32::from_bits&lt;/code&gt; and&amp;hellip; &lt;a href=&#34;https://github.com/rust-lang/rust/blob/8010604b2d888ac839147fe27de76cdcc713aa1b/src/libcore/num/f32.rs#L270-L275&#34;&gt;nope&lt;/a&gt;. It just does a normal reintepret. Turn&amp;rsquo;s out tomaka&amp;rsquo;s advice was out of date, and Rust &lt;a href=&#34;https://github.com/rust-lang/rust/pull/46012/commits/439576fd7bedf741db5fb6a21c902e858d51f2a0&#34;&gt;now allows sNaNs&lt;/a&gt;&lt;/p&gt;
 
 &lt;p&gt;So the hunt was on - where are we operating on this float value? Looking at the code it looked like we just take the number directly from the WebAssembly bytecode and interpret it as a float, no operations required. The bytecode must be correct - after all, the same code compiled for 64-bit worked correctly, and they both read the same bytecode. Since reading the code wasn&amp;rsquo;t helping me at all, I opened up the LLDB debugger&lt;sup class=&#34;footnote-ref&#34; id=&#34;fnref:lldb-debugger&#34;&gt;&lt;a href=&#34;#fn:lldb-debugger&#34;&gt;3&lt;/a&gt;&lt;/sup&gt; and attached it to the test binary that is output by &lt;code&gt;cargo test --no-run&lt;/code&gt;. Stepping through functions and checking their return value, I eventually found the culprit:&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;&lt;span style=&#34;color:#728e00&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#d35400&#34;&gt;run_reinterpret&lt;/span&gt;&lt;span style=&#34;color:#728e00&#34;&gt;&amp;lt;&lt;/span&gt;&lt;span style=&#34;color:#434f54&#34;&gt;T&lt;/span&gt;, &lt;span style=&#34;color:#434f54&#34;&gt;U&lt;/span&gt;&lt;span style=&#34;color:#728e00&#34;&gt;&amp;gt;&lt;/span&gt;(
@@ -82,56 +82,44 @@ Got:      0b11111111110000000000000000000000000
   }
 }&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 &lt;p&gt;We&amp;rsquo;re back where we started. As we saw before, &lt;code&gt;f32::from_bits&lt;/code&gt; is just a transmute. Originally I thought it was an old version of the standard library, so I wrote a quick test:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;&lt;span style=&#34;color:#728e00&#34;&gt;use&lt;/span&gt; &lt;span style=&#34;color:#434f54&#34;&gt;test&lt;/span&gt;::&lt;span style=&#34;color:#434f54&#34;&gt;black_box&lt;/span&gt; &lt;span style=&#34;color:#728e00&#34;&gt;as&lt;/span&gt; &lt;span style=&#34;color:#434f54&#34;&gt;bb&lt;/span&gt;;
 
-&lt;pre&gt;&lt;code&gt;use test::black_box as bb;
-
-#[test]
-fn it_works() {
-  assert_eq!(
-    bb(0xffa00000),
-    bb(
-      bb(f32::from_bits(bb(0xffa00000)))
-        .to_bits()
+&lt;span style=&#34;color:#728e00&#34;&gt;#[test]&lt;/span&gt;
+&lt;span style=&#34;color:#728e00&#34;&gt;fn&lt;/span&gt; &lt;span style=&#34;color:#d35400&#34;&gt;it_works&lt;/span&gt;() {
+  &lt;span style=&#34;color:#434f54&#34;&gt;assert_eq&lt;/span&gt;&lt;span style=&#34;color:#728e00&#34;&gt;!&lt;/span&gt;(
+    &lt;span style=&#34;color:#434f54&#34;&gt;bb&lt;/span&gt;(&lt;span style=&#34;color:#8a7b52&#34;&gt;0xffa00000&lt;/span&gt;),
+    &lt;span style=&#34;color:#434f54&#34;&gt;bb&lt;/span&gt;(
+      &lt;span style=&#34;color:#434f54&#34;&gt;bb&lt;/span&gt;(&lt;span style=&#34;color:#00979d&#34;&gt;f32&lt;/span&gt;::&lt;span style=&#34;color:#434f54&#34;&gt;from_bits&lt;/span&gt;(&lt;span style=&#34;color:#434f54&#34;&gt;bb&lt;/span&gt;(&lt;span style=&#34;color:#8a7b52&#34;&gt;0xffa00000&lt;/span&gt;)))
+        .&lt;span style=&#34;color:#434f54&#34;&gt;to_bits&lt;/span&gt;()
     )
   );
-}
-&lt;/code&gt;&lt;/pre&gt;
-
+}&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 &lt;p&gt;The &lt;code&gt;black_box&lt;/code&gt;/&lt;code&gt;bb&lt;/code&gt; function just ensures that the compiler doesn&amp;rsquo;t optimise anything out. This particular test succeeds, though, even on x86 (i.e. 32-bit, the same architecture where our &lt;code&gt;wasmi&lt;/code&gt; test suite fails). So I went back to &lt;code&gt;f32::from_bits&lt;/code&gt; in the compiled output for &lt;code&gt;wasmi&lt;/code&gt; and disassembled it with LLDB.&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;core::f32::&amp;lt;impl core::num::Float for f32&amp;gt;::from_bits:
-  pushl  %ebp
-  movl   %esp,        %ebp
-  subl   $0x10,       %esp
-  movl   0x8(%ebp),   %eax
-  movl   0x8(%ebp),   %ecx
-  movl   %ecx,        -0x4(%ebp)
-  movss  -0x4(%ebp),  %xmm0
-  movl   %eax,        -0xc(%ebp)
-  movss  %xmm0,       -0x10(%ebp)
-  movss  -0x10(%ebp), %xmm0
-  movss  %xmm0,       -0x8(%ebp)
-  flds   -0x8(%ebp)
-  addl   $0x10,       %esp
-  popl   %ebp
-  retl   
-&lt;/code&gt;&lt;/pre&gt;
-
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-gas&#34; data-lang=&#34;gas&#34;&gt;&lt;span style=&#34;color:#434f54&#34;&gt;core:&lt;/span&gt;&lt;span style=&#34;color:#a61717&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#434f54&#34;&gt;f32:&lt;/span&gt;&lt;span style=&#34;color:#a61717&#34;&gt;:&amp;lt;&lt;/span&gt;&lt;span style=&#34;color:#d35400&#34;&gt;impl&lt;/span&gt; &lt;span style=&#34;color:#434f54&#34;&gt;core&lt;/span&gt;::&lt;span style=&#34;color:#434f54&#34;&gt;num&lt;/span&gt;::&lt;span style=&#34;color:#434f54&#34;&gt;Float&lt;/span&gt; &lt;span style=&#34;color:#434f54&#34;&gt;for&lt;/span&gt; &lt;span style=&#34;color:#434f54&#34;&gt;f32&lt;/span&gt;&lt;span style=&#34;color:#a61717&#34;&gt;&amp;gt;&lt;/span&gt;::&lt;span style=&#34;color:#434f54&#34;&gt;from_bits&lt;/span&gt;:
+  &lt;span style=&#34;color:#d35400&#34;&gt;pushl&lt;/span&gt;  &lt;span style=&#34;color:#434f54&#34;&gt;%ebp&lt;/span&gt;
+  &lt;span style=&#34;color:#d35400&#34;&gt;movl&lt;/span&gt;   &lt;span style=&#34;color:#434f54&#34;&gt;%esp&lt;/span&gt;,        &lt;span style=&#34;color:#434f54&#34;&gt;%ebp&lt;/span&gt;
+  &lt;span style=&#34;color:#d35400&#34;&gt;subl&lt;/span&gt;   &lt;span style=&#34;color:#434f54&#34;&gt;$0x10&lt;/span&gt;,       &lt;span style=&#34;color:#434f54&#34;&gt;%esp&lt;/span&gt;
+  &lt;span style=&#34;color:#d35400&#34;&gt;movl&lt;/span&gt;   &lt;span style=&#34;color:#8a7b52&#34;&gt;0x8&lt;/span&gt;(&lt;span style=&#34;color:#434f54&#34;&gt;%ebp&lt;/span&gt;),   &lt;span style=&#34;color:#434f54&#34;&gt;%eax&lt;/span&gt;
+  &lt;span style=&#34;color:#d35400&#34;&gt;movl&lt;/span&gt;   &lt;span style=&#34;color:#8a7b52&#34;&gt;0x8&lt;/span&gt;(&lt;span style=&#34;color:#434f54&#34;&gt;%ebp&lt;/span&gt;),   &lt;span style=&#34;color:#434f54&#34;&gt;%ecx&lt;/span&gt;
+  &lt;span style=&#34;color:#d35400&#34;&gt;movl&lt;/span&gt;   &lt;span style=&#34;color:#434f54&#34;&gt;%ecx&lt;/span&gt;,        -&lt;span style=&#34;color:#8a7b52&#34;&gt;0x4&lt;/span&gt;(&lt;span style=&#34;color:#434f54&#34;&gt;%ebp&lt;/span&gt;)
+  &lt;span style=&#34;color:#d35400&#34;&gt;movss&lt;/span&gt;  -&lt;span style=&#34;color:#8a7b52&#34;&gt;0x4&lt;/span&gt;(&lt;span style=&#34;color:#434f54&#34;&gt;%ebp&lt;/span&gt;),  &lt;span style=&#34;color:#434f54&#34;&gt;%xmm0&lt;/span&gt;
+  &lt;span style=&#34;color:#d35400&#34;&gt;movl&lt;/span&gt;   &lt;span style=&#34;color:#434f54&#34;&gt;%eax&lt;/span&gt;,        -&lt;span style=&#34;color:#8a7b52&#34;&gt;0xc&lt;/span&gt;(&lt;span style=&#34;color:#434f54&#34;&gt;%ebp&lt;/span&gt;)
+  &lt;span style=&#34;color:#d35400&#34;&gt;movss&lt;/span&gt;  &lt;span style=&#34;color:#434f54&#34;&gt;%xmm0&lt;/span&gt;,       -&lt;span style=&#34;color:#8a7b52&#34;&gt;0x10&lt;/span&gt;(&lt;span style=&#34;color:#434f54&#34;&gt;%ebp&lt;/span&gt;)
+  &lt;span style=&#34;color:#d35400&#34;&gt;movss&lt;/span&gt;  -&lt;span style=&#34;color:#8a7b52&#34;&gt;0x10&lt;/span&gt;(&lt;span style=&#34;color:#434f54&#34;&gt;%ebp&lt;/span&gt;), &lt;span style=&#34;color:#434f54&#34;&gt;%xmm0&lt;/span&gt;
+  &lt;span style=&#34;color:#d35400&#34;&gt;movss&lt;/span&gt;  &lt;span style=&#34;color:#434f54&#34;&gt;%xmm0&lt;/span&gt;,       -&lt;span style=&#34;color:#8a7b52&#34;&gt;0x8&lt;/span&gt;(&lt;span style=&#34;color:#434f54&#34;&gt;%ebp&lt;/span&gt;)
+  &lt;span style=&#34;color:#d35400&#34;&gt;flds&lt;/span&gt;   -&lt;span style=&#34;color:#8a7b52&#34;&gt;0x8&lt;/span&gt;(&lt;span style=&#34;color:#434f54&#34;&gt;%ebp&lt;/span&gt;)
+  &lt;span style=&#34;color:#d35400&#34;&gt;addl&lt;/span&gt;   &lt;span style=&#34;color:#434f54&#34;&gt;$0x10&lt;/span&gt;,       &lt;span style=&#34;color:#434f54&#34;&gt;%esp&lt;/span&gt;
+  &lt;span style=&#34;color:#d35400&#34;&gt;popl&lt;/span&gt;   &lt;span style=&#34;color:#434f54&#34;&gt;%ebp&lt;/span&gt;
+  &lt;span style=&#34;color:#d35400&#34;&gt;retl&lt;/span&gt;   &lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 &lt;p&gt;At first glance, that looks like it&amp;rsquo;s doing a bunch more stuff than just a transmute, but it&amp;rsquo;s actually just moving data about because the test harness is compiled without optimisations by default. If you turn optimisations on, this just compiles to:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;core::f32::&amp;lt;impl core::num::Float for f32&amp;gt;::from_bits:
-  flds   0x4(%esp)
-  retl   
-&lt;/code&gt;&lt;/pre&gt;
-
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-gas&#34; data-lang=&#34;gas&#34;&gt;&lt;span style=&#34;color:#434f54&#34;&gt;core:&lt;/span&gt;&lt;span style=&#34;color:#a61717&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#434f54&#34;&gt;f32:&lt;/span&gt;&lt;span style=&#34;color:#a61717&#34;&gt;:&amp;lt;&lt;/span&gt;&lt;span style=&#34;color:#d35400&#34;&gt;impl&lt;/span&gt; &lt;span style=&#34;color:#434f54&#34;&gt;core&lt;/span&gt;::&lt;span style=&#34;color:#434f54&#34;&gt;num&lt;/span&gt;::&lt;span style=&#34;color:#434f54&#34;&gt;Float&lt;/span&gt; &lt;span style=&#34;color:#434f54&#34;&gt;for&lt;/span&gt; &lt;span style=&#34;color:#434f54&#34;&gt;f32&lt;/span&gt;&lt;span style=&#34;color:#a61717&#34;&gt;&amp;gt;&lt;/span&gt;::&lt;span style=&#34;color:#434f54&#34;&gt;from_bits&lt;/span&gt;:
+  &lt;span style=&#34;color:#d35400&#34;&gt;flds&lt;/span&gt;   &lt;span style=&#34;color:#8a7b52&#34;&gt;0x4&lt;/span&gt;(&lt;span style=&#34;color:#434f54&#34;&gt;%esp&lt;/span&gt;)
+  &lt;span style=&#34;color:#d35400&#34;&gt;retl&lt;/span&gt;   &lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 &lt;p&gt;Hang on, what&amp;rsquo;s this &lt;code&gt;flds&lt;/code&gt; instruction? We see it in the debug version above, too. It&amp;rsquo;s not there if you disassemble the build for 64-bit:&lt;/p&gt;
-
-&lt;pre&gt;&lt;code&gt;core::f32::&amp;lt;impl core::num::Float for f32&amp;gt;::from_bits:
-  movd   %edi, %xmm0
-  retq   
-&lt;/code&gt;&lt;/pre&gt;
-
-&lt;p&gt;So what does it do? I&amp;rsquo;m pretty familiar with x86 assembly, but I&amp;rsquo;d never seen this instruction before. Googling it brings up &lt;a href=&#34;https://c9x.me/x86/html/file_module_x86_id_100.html&#34;&gt;this page in the x86 reference&lt;/a&gt;, which says that it pushes the argument onto the FPU register stack. See, what most people call x86 is actually an extension known as &lt;a href=&#34;https://en.wikipedia.org/wiki/X87&#34;&gt;x87&lt;/a&gt;, which implementes floating point operations on top of x86. One common &lt;a href=&#34;https://en.wikipedia.org/wiki/X86_calling_conventions&#34;&gt;calling convention&lt;/a&gt; for x87 is to return integer arguments in &lt;code&gt;%eax&lt;/code&gt; and floating point arguments on the FPU stack, using the &lt;code&gt;fstps&lt;/code&gt; instruction in the code that calls our function in order to load the returned value. This is what &lt;code&gt;flds&lt;/code&gt; is doing here, returning the argument as a float. Ah, but whenever the CPU operates on a float it&amp;rsquo;s allowed to quieten it, and sure enough &lt;code&gt;fld&lt;/code&gt; quietens sNaNs that were passed to it. With LLDB we can read the state of the registers and memory, so let&amp;rsquo;s check out what happens between &lt;code&gt;flds&lt;/code&gt; and &lt;code&gt;fstps&lt;/code&gt;.&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-gas&#34; data-lang=&#34;gas&#34;&gt;&lt;span style=&#34;color:#434f54&#34;&gt;core:&lt;/span&gt;&lt;span style=&#34;color:#a61717&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#434f54&#34;&gt;f32:&lt;/span&gt;&lt;span style=&#34;color:#a61717&#34;&gt;:&amp;lt;&lt;/span&gt;&lt;span style=&#34;color:#d35400&#34;&gt;impl&lt;/span&gt; &lt;span style=&#34;color:#434f54&#34;&gt;core&lt;/span&gt;::&lt;span style=&#34;color:#434f54&#34;&gt;num&lt;/span&gt;::&lt;span style=&#34;color:#434f54&#34;&gt;Float&lt;/span&gt; &lt;span style=&#34;color:#434f54&#34;&gt;for&lt;/span&gt; &lt;span style=&#34;color:#434f54&#34;&gt;f32&lt;/span&gt;&lt;span style=&#34;color:#a61717&#34;&gt;&amp;gt;&lt;/span&gt;::&lt;span style=&#34;color:#434f54&#34;&gt;from_bits&lt;/span&gt;:
+  &lt;span style=&#34;color:#d35400&#34;&gt;movd&lt;/span&gt;   &lt;span style=&#34;color:#434f54&#34;&gt;%edi&lt;/span&gt;, &lt;span style=&#34;color:#434f54&#34;&gt;%xmm0&lt;/span&gt;
+  &lt;span style=&#34;color:#d35400&#34;&gt;retq&lt;/span&gt;   &lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;So what does it do? I&amp;rsquo;m pretty familiar with x86 assembly, but I&amp;rsquo;d never seen this instruction before. Googling it brings up &lt;a href=&#34;https://c9x.me/x86/html/file_module_x86_id_100.html&#34;&gt;this page in the x86 reference&lt;/a&gt;, which says that it pushes the argument onto the FPU register stack. See, what most people call x86 is actually an extension known as &lt;a href=&#34;https://en.wikipedia.org/wiki/X87&#34;&gt;x87&lt;/a&gt;, which implementes floating point operations on top of x86. One common &lt;a href=&#34;https://en.wikipedia.org/wiki/X86_calling_conventions&#34;&gt;calling convention&lt;/a&gt; for x87 is to return integer arguments in &lt;code&gt;%eax&lt;/code&gt; and floating point arguments on the FPU stack, using the &lt;code&gt;fstps&lt;/code&gt; instruction to load the returned value after control is returned to the caller. This is what &lt;code&gt;flds&lt;/code&gt; is doing here, returning the argument as a float. Ah, but whenever the CPU operates on a float it&amp;rsquo;s allowed to quieten it, and sure enough &lt;code&gt;fld&lt;/code&gt; quietens sNaNs that were passed to it. With LLDB we can read the state of the registers and memory, so let&amp;rsquo;s check out what happens between &lt;code&gt;flds&lt;/code&gt; and &lt;code&gt;fstps&lt;/code&gt;.&lt;/p&gt;
 
 &lt;pre&gt;&lt;code&gt;(lldb) run
 ## SNIP ##
@@ -140,7 +128,7 @@ fn it_works() {
 ## SNIP ##
 &lt;/code&gt;&lt;/pre&gt;
 
-&lt;p&gt;You can see we&amp;rsquo;ve stopped on our problematic &lt;code&gt;flds&lt;/code&gt; instruction. Let&amp;rsquo;s check out the value of &lt;code&gt;0x4(%esp)&lt;/code&gt; (i.e. the value of &lt;code&gt;%esp&lt;/code&gt; plus &lt;code&gt;0x4&lt;/code&gt;).&lt;/p&gt;
+&lt;p&gt;You can see that we&amp;rsquo;ve stopped on our problematic &lt;code&gt;flds&lt;/code&gt; instruction. Let&amp;rsquo;s check out the data pointed to by &lt;code&gt;0x4(%esp)&lt;/code&gt; (i.e. &lt;code&gt;%esp&lt;/code&gt; plus &lt;code&gt;0x4&lt;/code&gt;).&lt;/p&gt;
 
 &lt;pre&gt;&lt;code&gt;(lldb) register read esp
     esp = 0xf77fee3c
@@ -172,7 +160,7 @@ fn it_works() {
 0xf77fee54: 0xffe00000
 &lt;/code&gt;&lt;/pre&gt;
 
-&lt;p&gt;There we go, that&amp;rsquo;s a quiet NaN. That&amp;rsquo;s the first time that I&amp;rsquo;ve seen &lt;em&gt;the very act of extracting something to a function&lt;/em&gt; cause tests to fail where they would have otherwise succeeded.&lt;/p&gt;
+&lt;p&gt;There we go, that&amp;rsquo;s a quiet NaN. That&amp;rsquo;s the first time that I&amp;rsquo;ve seen &lt;em&gt;the very act of returning something from a function&lt;/em&gt; cause tests to fail where they would have succeeded if it had been done inline.&lt;/p&gt;
 
 &lt;p&gt;So the solution? I wrote &lt;a href=&#34;https://github.com/Vurich/nan-preserving-float/blob/master/src/lib.rs&#34;&gt;a wrapper around &lt;code&gt;u32&lt;/code&gt;/&lt;code&gt;u64&lt;/code&gt;&lt;/a&gt; that converts to &lt;code&gt;f32&lt;/code&gt;/&lt;code&gt;f64&lt;/code&gt; when doing operations. This essentially fools the CPU into thinking that these values are integers unless it&amp;rsquo;s doing binary operations on them, and so when you pass them in and out of functions it uses the &lt;code&gt;%eax&lt;/code&gt; register and preserves their bit patterns. Since WebAssembly requires that you quieten NaNs when doing binary operations, this doesn&amp;rsquo;t cause a problem.&lt;/p&gt;
 
@@ -632,7 +620,7 @@ fn it_works() {
   }
 }&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 &lt;p&gt;And here&amp;rsquo;s what that generates. I&amp;rsquo;ve heavily commented it so you can understand what&amp;rsquo;s going on even if you&amp;rsquo;ve never touched assembly in your life, but you will need to know basic low-level details like the difference between memory and registers. If you want to get a primer on the structure of a CPU, the &lt;a href=&#34;https://en.wikipedia.org/wiki/Central_processing_unit#Structure_and_implementation&#34;&gt;Wikipedia article on structure and implementation of CPUs&lt;/a&gt; is a good place to start:&lt;/p&gt;
-&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-gas&#34; data-lang=&#34;gas&#34;&gt;&lt;span style=&#34;color:#434f54&#34;&gt;full_mul:&lt;/span&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-gas&#34; data-lang=&#34;gas&#34;&gt;&lt;span style=&#34;color:#434f54&#34;&gt;bigint:&lt;/span&gt;&lt;span style=&#34;color:#a61717&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#434f54&#34;&gt;U256:&lt;/span&gt;&lt;span style=&#34;color:#a61717&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#434f54&#34;&gt;full_mul:&lt;/span&gt;
     &lt;span style=&#34;color:#95a5a6&#34;&gt;;; Function prelude - this is generated by Rust
 &lt;/span&gt;&lt;span style=&#34;color:#95a5a6&#34;&gt;&lt;/span&gt;    &lt;span style=&#34;color:#d35400&#34;&gt;pushq&lt;/span&gt;  &lt;span style=&#34;color:#434f54&#34;&gt;%r15&lt;/span&gt;
     &lt;span style=&#34;color:#d35400&#34;&gt;pushq&lt;/span&gt;  &lt;span style=&#34;color:#434f54&#34;&gt;%r14&lt;/span&gt;
@@ -833,7 +821,7 @@ fn it_works() {
 &lt;p&gt;By comparison, the Rust code that uses &lt;code&gt;u128&lt;/code&gt; is about as say-what-you-mean as you can get. Even if your goal was not optimisation you would probably write something similar to it as the simplest solution to the problem, but the code that LLVM produces is very high-quality. You can see already that it&amp;rsquo;s not too different to our hand-written code, but it addresses some of the issues (commented below) while also including a couple more optimisations that I wouldn&amp;rsquo;t have even thought of. I couldn&amp;rsquo;t find any significant optimisations that it missed.&lt;/p&gt;
 
 &lt;p&gt;Here&amp;rsquo;s the generated assembly:&lt;/p&gt;
-&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-gas&#34; data-lang=&#34;gas&#34;&gt;&lt;span style=&#34;color:#434f54&#34;&gt;full_mul:&lt;/span&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre style=&#34;background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4&#34;&gt;&lt;code class=&#34;language-gas&#34; data-lang=&#34;gas&#34;&gt;&lt;span style=&#34;color:#434f54&#34;&gt;bigint:&lt;/span&gt;&lt;span style=&#34;color:#a61717&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#434f54&#34;&gt;U256:&lt;/span&gt;&lt;span style=&#34;color:#a61717&#34;&gt;:&lt;/span&gt;&lt;span style=&#34;color:#434f54&#34;&gt;full_mul:&lt;/span&gt;
     &lt;span style=&#34;color:#95a5a6&#34;&gt;;; Function prelude
 &lt;/span&gt;&lt;span style=&#34;color:#95a5a6&#34;&gt;&lt;/span&gt;    &lt;span style=&#34;color:#d35400&#34;&gt;pushq&lt;/span&gt;  &lt;span style=&#34;color:#434f54&#34;&gt;%rbp&lt;/span&gt;
     &lt;span style=&#34;color:#d35400&#34;&gt;movq&lt;/span&gt;   &lt;span style=&#34;color:#434f54&#34;&gt;%rsp&lt;/span&gt;, &lt;span style=&#34;color:#434f54&#34;&gt;%rbp&lt;/span&gt;
@@ -1104,19 +1092,19 @@ fn it_works() {
 &lt;h3 id=&#34;contents&#34;&gt;Contents:&lt;/h3&gt;
 
 &lt;ul&gt;
-&lt;li&gt;&lt;a href=&#34;#number-one-optimization-tip-dont&#34;&gt;Number one optimization tip: don&amp;rsquo;t&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#number-one-optimization-tip-don-t&#34;&gt;Number one optimization tip: don&amp;rsquo;t&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;&lt;a href=&#34;#never-optimize-blindly&#34;&gt;Never optimize blindly&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href=&#34;#dont-bother-optimizing-one-time-costs&#34;&gt;Don&amp;rsquo;t bother optimizing one-time costs&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#don-t-bother-optimizing-one-time-costs&#34;&gt;Don&amp;rsquo;t bother optimizing one-time costs&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;&lt;a href=&#34;#improve-your-algorithms&#34;&gt;Improve your algorithms&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;&lt;a href=&#34;#cpu-architecture-primer&#34;&gt;CPU architecture primer&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;&lt;a href=&#34;#keep-as-much-as-possible-in-cache&#34;&gt;Keep as much as possible in cache&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;&lt;a href=&#34;#keep-as-much-as-possible-in-registers&#34;&gt;Keep as much as possible in registers&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href=&#34;#avoid-boxtrait&#34;&gt;Avoid &lt;code&gt;Box&amp;lt;Trait&amp;gt;&lt;/code&gt;&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#avoid-box-trait&#34;&gt;Avoid &lt;code&gt;Box&amp;lt;Trait&amp;gt;&lt;/code&gt;&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;&lt;a href=&#34;#use-stack-based-variable-length-datatypes&#34;&gt;Use stack-based variable-length datatypes&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;&lt;a href=&#34;#loop-unrolling-is-still-cool&#34;&gt;Loop unrolling is still cool&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;&lt;a href=&#34;#assert-conditions-beforehand&#34;&gt;&lt;code&gt;assert!&lt;/code&gt; conditions beforehand&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;&lt;a href=&#34;#use-link-time-optimization&#34;&gt;Use link-time optimization&lt;/a&gt;&lt;/li&gt;
-&lt;li&gt;&lt;a href=&#34;#dont-use-inlinealways&#34;&gt;Don&amp;rsquo;t use &lt;code&gt;#[inline(always)]&lt;/code&gt;&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#dont-use-inline-always&#34;&gt;Don&amp;rsquo;t use &lt;code&gt;#[inline(always)]&lt;/code&gt;&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;&lt;a href=&#34;#parallelize-but-not-how-you-think&#34;&gt;Parallelize, but not how you think&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;&lt;a href=&#34;#a-case-study&#34;&gt;A case study&lt;/a&gt;&lt;/li&gt;
 &lt;li&gt;&lt;a href=&#34;#wrapping-up&#34;&gt;Wrapping up&lt;/a&gt;&lt;/li&gt;

@@ -60,9 +60,9 @@
 
 <div class="content">
   <h1>In which the CPU changes my data under my nose <aside></aside></h1>
-  <p>IEEE 754 has been the source of jokes and confusion for a while because of its <a href="https://0.30000000000000004.com/">imprecise representation of decimal numbers</a>, but the truth is that it&rsquo;s an easily-implementable, efficient representation of floating-point numbers that a lot of applications that don&rsquo;t need high precision couldn&rsquo;t easily do without. It&rsquo;s not without its peculiarities though. Or rather, pecularity singular. Specifically, the existence of NaN. NaN is a weird beast, taking up <a href="https://en.wikipedia.org/wiki/Single-precision_floating-point_format#Exponent_encoding">16777208</a> possible values that could have otherwise been used for real data (although some sneaky people get away with using them <a href="https://softwareengineering.stackexchange.com/questions/185406/what-is-the-purpose-of-nan-boxing">for special values</a>) and <a href="https://doc.rust-lang.org/std/cmp/trait.PartialOrd.html">forcing Rust to split its comparison traits into &ldquo;partial&rdquo; and &ldquo;total&rdquo; variants</a>. A lot of developer time and effort has been spent working out precisely how to handle NaN, and this is the story of my recent personal contribution to that time and effort.</p>
+  <p>IEEE 754 has been the source of jokes and confusion for a while because of its <a href="https://0.30000000000000004.com/">imprecise representation of decimal numbers</a>, but the truth is that it&rsquo;s an easily-implementable, efficient representation of floating-point numbers and a lot of applications that don&rsquo;t need high precision couldn&rsquo;t easily do without it. It&rsquo;s not without its peculiarities though. Or rather, pecularity, singular. Specifically, the existence of NaN. NaN is a weird beast, taking up <a href="https://en.wikipedia.org/wiki/Single-precision_floating-point_format#Exponent_encoding">16777208</a> possible values that could have otherwise been used for real data (although some sneaky people get away with using them <a href="https://softwareengineering.stackexchange.com/questions/185406/what-is-the-purpose-of-nan-boxing">for special values</a>) and <a href="https://doc.rust-lang.org/std/cmp/trait.PartialOrd.html">forcing Rust to split its comparison traits into &ldquo;partial&rdquo; and &ldquo;total&rdquo; variants</a>. A lot of developer time and effort has been spent working out precisely how to handle NaN, and this is the story of my recent personal contribution to that time and effort.</p>
 
-<p>This particular story about NaN starts with a strange bug in <a href="https://github.com/paritytech/wasmi"><code>wasmi</code></a>, our experimental WebAssembly interpreter for blockchains here at <a href="https://github.com/paritytech/">Parity</a>. The tests were failing on x86 when compiled for 32-bit, but not for 64-bit. After rewriting our WebAssembly test harness to correctly report failures, I narrowed it down to a few test cases that looked something like the following:</p>
+<p>This particular story about NaN starts with a strange bug in <a href="https://github.com/paritytech/wasmi"><code>wasmi</code></a>, our experimental WebAssembly interpreter for blockchains here at <a href="https://github.com/paritytech/">Parity</a>. The tests were failing when compiled for 32-bit, but not for 64-bit. After rewriting our WebAssembly test harness to correctly report failures, I narrowed it down to a few test cases that looked something like the following:</p>
 <div class="highlight"><pre style="background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-lisp" data-lang="lisp">(<span style="color:#434f54">module</span>
   <span style="color:#95a5a6">;; ...</span>
   (<span style="color:#434f54">func</span> (<span style="color:#434f54">export</span> <span style="color:#7f8c8d">&#34;f32.reinterpret_i32&#34;</span>) (<span style="color:#434f54">param</span> <span style="color:#434f54">$x</span> <span style="color:#434f54">i32</span>)
@@ -88,14 +88,14 @@
 (<span style="color:#434f54">assert_return</span> (<span style="color:#434f54">invoke</span> <span style="color:#7f8c8d">&#34;i32.reinterpret_f32&#34;</span>
                        (<span style="color:#434f54">f32.const</span> <span style="color:#434f54">-nan:0x200000</span>))
                (<span style="color:#434f54">i32.const</span> <span style="color:#434f54">0xffa00000</span>))</code></pre></div>
-<p>All other tests were succeeding, but doing a bitwise cast from integer to float and visa-versa was failing. Furthermore, these tests all succeeded on x86_64 (i.e. when compiled for 64-bit), they only failed on x86 (i.e. when compiled for 32-bit). Finally, the difference between the expected value and the received value was only one bit. Instead of returning a float with the bit pattern <code>0x7fa000000</code> it would return <code>0x7fe000000</code> instead. If you&rsquo;ve worked with NaNs before, you might have noticed something:</p>
+<p>All other tests were succeeding, but doing a bitwise cast from integer to float and visa-versa was failing. Furthermore, these tests all succeeded on x86_64 (i.e. when compiled for 64-bit), they only failed on x86 (i.e. when compiled for 32-bit). Lastly, the difference between the expected value and the received value was only one bit. Instead of returning a float with the bit pattern <code>0x7fa000000</code> it would return <code>0x7fe000000</code> instead. If you&rsquo;ve worked with NaNs before, you might have noticed something:</p>
 
 <pre><code>Expected: 0b11111111010000000000000000000000000
 Got:      0b11111111110000000000000000000000000
                     ^ This bit is different
 </code></pre>
 
-<p>That&rsquo;s right, it&rsquo;s the <a href="https://en.wikipedia.org/wiki/NaN#Signaling_NaN">quiet bit</a>! For those unaware, the quiet bit determines whether or not the number should raise an exception when you attempt to use it. This is because the <a href="https://en.wikipedia.org/wiki/IEEE_754">IEEE 754 standard</a> was written at a time when it wasn&rsquo;t necessarily expected that a programming language would include exceptions, and so the standard includes provisions to allow hardware-level exceptions when, for example, dividing by zero. The idea is that when the hardware tries to execute an invalid floating point operation (like division by zero) it is allowed to generate a &ldquo;signalling NaN&rdquo;, or sNaN. This is what we see above, the quiet bit is set to 0, meaning that the NaN is signalling<sup class="footnote-ref" id="fnref:ieee-x86"><a href="#fn:ieee-x86">1</a></sup>. When you try to use this value (for example, by multiplying it with another number) the hardware is allowed to generate an exception and then return a &ldquo;quiet NaN&rdquo;, or qNaN, which has the quiet bit set to 1. I say &ldquo;allowed to&rdquo; rather than &ldquo;does&rdquo; or &ldquo;should&rdquo; because IEEE 754 leaves this unspecified, and in fact as far as I can tell x86 and ARM never generate sNaNs, the only way to create them is to reinterpret an integer with the signalling bit set as a float. Originally, I thought the source of the problem was obvious: <a href="https://github.com/rust-lang/rust/pull/39271">Rust was quieting NaN when casting an int to a float</a>. I remember seeing <a href="https://github.com/tomaka">tomaka</a>&rsquo;s<sup class="footnote-ref" id="fnref:troubles"><a href="#fn:troubles">2</a></sup> talk at RustFest 2017 on binding C libraries where he mentioned that Rust guarantees that all NaNs are quiet and that you have to explicitly handle that when using floats returned from C (where sNaNs are allowed). So I checked the source of <code>f32::from_bits</code> and&hellip; <a href="https://github.com/rust-lang/rust/blob/8010604b2d888ac839147fe27de76cdcc713aa1b/src/libcore/num/f32.rs#L270-L275">nope</a>. It just does a normal reintepret. Turn&rsquo;s out tomaka&rsquo;s advice was out of date, and Rust <a href="https://github.com/rust-lang/rust/pull/46012/commits/439576fd7bedf741db5fb6a21c902e858d51f2a0">now allows sNaNs</a></p>
+<p>That&rsquo;s right, it&rsquo;s the <a href="https://en.wikipedia.org/wiki/NaN#Signaling_NaN">quiet bit</a>! For those unaware, the quiet bit determines whether or not the number should raise an exception when you attempt to use it. This is because the <a href="https://en.wikipedia.org/wiki/IEEE_754">IEEE 754 standard</a> was written at a time when it wasn&rsquo;t necessarily expected that a programming language would include exceptions. The standard includes provisions to allow hardware-level exceptions when, for example, dividing by zero. The idea is that when the hardware tries to execute an invalid floating point operation (like division by zero) it is allowed to generate a &ldquo;signalling NaN&rdquo;, or sNaN. This is what we see above - the quiet bit is set to 0, meaning that the NaN is signalling<sup class="footnote-ref" id="fnref:ieee-x86"><a href="#fn:ieee-x86">1</a></sup>. When you try to use this value (for example, by multiplying it with another number) the hardware is allowed to generate an exception and then return a &ldquo;quiet NaN&rdquo;, or qNaN, which has the quiet bit set to 1. I say &ldquo;allowed to&rdquo; rather than &ldquo;does&rdquo; or &ldquo;should&rdquo; because IEEE 754 leaves this unspecified, and in fact as far as I can tell x86 and ARM never generate sNaNs, the only way to create them is to reinterpret an integer with the signalling bit set. Originally, I thought the source of the problem was obvious: <a href="https://github.com/rust-lang/rust/pull/39271">Rust was quieting NaN when casting an int to a float</a>. I remember seeing <a href="https://github.com/tomaka">tomaka</a>&rsquo;s<sup class="footnote-ref" id="fnref:troubles"><a href="#fn:troubles">2</a></sup> talk at RustFest 2017 on binding C libraries where he mentioned that Rust guarantees that all NaNs are quiet and that you have to explicitly handle that when using floats returned from C (where sNaNs are allowed). So I checked the source of <code>f32::from_bits</code> and&hellip; <a href="https://github.com/rust-lang/rust/blob/8010604b2d888ac839147fe27de76cdcc713aa1b/src/libcore/num/f32.rs#L270-L275">nope</a>. It just does a normal reintepret. Turn&rsquo;s out tomaka&rsquo;s advice was out of date, and Rust <a href="https://github.com/rust-lang/rust/pull/46012/commits/439576fd7bedf741db5fb6a21c902e858d51f2a0">now allows sNaNs</a></p>
 
 <p>So the hunt was on - where are we operating on this float value? Looking at the code it looked like we just take the number directly from the WebAssembly bytecode and interpret it as a float, no operations required. The bytecode must be correct - after all, the same code compiled for 64-bit worked correctly, and they both read the same bytecode. Since reading the code wasn&rsquo;t helping me at all, I opened up the LLDB debugger<sup class="footnote-ref" id="fnref:lldb-debugger"><a href="#fn:lldb-debugger">3</a></sup> and attached it to the test binary that is output by <code>cargo test --no-run</code>. Stepping through functions and checking their return value, I eventually found the culprit:</p>
 <div class="highlight"><pre style="background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-rust" data-lang="rust"><span style="color:#728e00">fn</span> <span style="color:#d35400">run_reinterpret</span><span style="color:#728e00">&lt;</span><span style="color:#434f54">T</span>, <span style="color:#434f54">U</span><span style="color:#728e00">&gt;</span>(
@@ -125,56 +125,44 @@ Got:      0b11111111110000000000000000000000000
   }
 }</code></pre></div>
 <p>We&rsquo;re back where we started. As we saw before, <code>f32::from_bits</code> is just a transmute. Originally I thought it was an old version of the standard library, so I wrote a quick test:</p>
+<div class="highlight"><pre style="background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-rust" data-lang="rust"><span style="color:#728e00">use</span> <span style="color:#434f54">test</span>::<span style="color:#434f54">black_box</span> <span style="color:#728e00">as</span> <span style="color:#434f54">bb</span>;
 
-<pre><code>use test::black_box as bb;
-
-#[test]
-fn it_works() {
-  assert_eq!(
-    bb(0xffa00000),
-    bb(
-      bb(f32::from_bits(bb(0xffa00000)))
-        .to_bits()
+<span style="color:#728e00">#[test]</span>
+<span style="color:#728e00">fn</span> <span style="color:#d35400">it_works</span>() {
+  <span style="color:#434f54">assert_eq</span><span style="color:#728e00">!</span>(
+    <span style="color:#434f54">bb</span>(<span style="color:#8a7b52">0xffa00000</span>),
+    <span style="color:#434f54">bb</span>(
+      <span style="color:#434f54">bb</span>(<span style="color:#00979d">f32</span>::<span style="color:#434f54">from_bits</span>(<span style="color:#434f54">bb</span>(<span style="color:#8a7b52">0xffa00000</span>)))
+        .<span style="color:#434f54">to_bits</span>()
     )
   );
-}
-</code></pre>
-
+}</code></pre></div>
 <p>The <code>black_box</code>/<code>bb</code> function just ensures that the compiler doesn&rsquo;t optimise anything out. This particular test succeeds, though, even on x86 (i.e. 32-bit, the same architecture where our <code>wasmi</code> test suite fails). So I went back to <code>f32::from_bits</code> in the compiled output for <code>wasmi</code> and disassembled it with LLDB.</p>
-
-<pre><code>core::f32::&lt;impl core::num::Float for f32&gt;::from_bits:
-  pushl  %ebp
-  movl   %esp,        %ebp
-  subl   $0x10,       %esp
-  movl   0x8(%ebp),   %eax
-  movl   0x8(%ebp),   %ecx
-  movl   %ecx,        -0x4(%ebp)
-  movss  -0x4(%ebp),  %xmm0
-  movl   %eax,        -0xc(%ebp)
-  movss  %xmm0,       -0x10(%ebp)
-  movss  -0x10(%ebp), %xmm0
-  movss  %xmm0,       -0x8(%ebp)
-  flds   -0x8(%ebp)
-  addl   $0x10,       %esp
-  popl   %ebp
-  retl   
-</code></pre>
-
+<div class="highlight"><pre style="background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-gas" data-lang="gas"><span style="color:#434f54">core:</span><span style="color:#a61717">:</span><span style="color:#434f54">f32:</span><span style="color:#a61717">:&lt;</span><span style="color:#d35400">impl</span> <span style="color:#434f54">core</span>::<span style="color:#434f54">num</span>::<span style="color:#434f54">Float</span> <span style="color:#434f54">for</span> <span style="color:#434f54">f32</span><span style="color:#a61717">&gt;</span>::<span style="color:#434f54">from_bits</span>:
+  <span style="color:#d35400">pushl</span>  <span style="color:#434f54">%ebp</span>
+  <span style="color:#d35400">movl</span>   <span style="color:#434f54">%esp</span>,        <span style="color:#434f54">%ebp</span>
+  <span style="color:#d35400">subl</span>   <span style="color:#434f54">$0x10</span>,       <span style="color:#434f54">%esp</span>
+  <span style="color:#d35400">movl</span>   <span style="color:#8a7b52">0x8</span>(<span style="color:#434f54">%ebp</span>),   <span style="color:#434f54">%eax</span>
+  <span style="color:#d35400">movl</span>   <span style="color:#8a7b52">0x8</span>(<span style="color:#434f54">%ebp</span>),   <span style="color:#434f54">%ecx</span>
+  <span style="color:#d35400">movl</span>   <span style="color:#434f54">%ecx</span>,        -<span style="color:#8a7b52">0x4</span>(<span style="color:#434f54">%ebp</span>)
+  <span style="color:#d35400">movss</span>  -<span style="color:#8a7b52">0x4</span>(<span style="color:#434f54">%ebp</span>),  <span style="color:#434f54">%xmm0</span>
+  <span style="color:#d35400">movl</span>   <span style="color:#434f54">%eax</span>,        -<span style="color:#8a7b52">0xc</span>(<span style="color:#434f54">%ebp</span>)
+  <span style="color:#d35400">movss</span>  <span style="color:#434f54">%xmm0</span>,       -<span style="color:#8a7b52">0x10</span>(<span style="color:#434f54">%ebp</span>)
+  <span style="color:#d35400">movss</span>  -<span style="color:#8a7b52">0x10</span>(<span style="color:#434f54">%ebp</span>), <span style="color:#434f54">%xmm0</span>
+  <span style="color:#d35400">movss</span>  <span style="color:#434f54">%xmm0</span>,       -<span style="color:#8a7b52">0x8</span>(<span style="color:#434f54">%ebp</span>)
+  <span style="color:#d35400">flds</span>   -<span style="color:#8a7b52">0x8</span>(<span style="color:#434f54">%ebp</span>)
+  <span style="color:#d35400">addl</span>   <span style="color:#434f54">$0x10</span>,       <span style="color:#434f54">%esp</span>
+  <span style="color:#d35400">popl</span>   <span style="color:#434f54">%ebp</span>
+  <span style="color:#d35400">retl</span>   </code></pre></div>
 <p>At first glance, that looks like it&rsquo;s doing a bunch more stuff than just a transmute, but it&rsquo;s actually just moving data about because the test harness is compiled without optimisations by default. If you turn optimisations on, this just compiles to:</p>
-
-<pre><code>core::f32::&lt;impl core::num::Float for f32&gt;::from_bits:
-  flds   0x4(%esp)
-  retl   
-</code></pre>
-
+<div class="highlight"><pre style="background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-gas" data-lang="gas"><span style="color:#434f54">core:</span><span style="color:#a61717">:</span><span style="color:#434f54">f32:</span><span style="color:#a61717">:&lt;</span><span style="color:#d35400">impl</span> <span style="color:#434f54">core</span>::<span style="color:#434f54">num</span>::<span style="color:#434f54">Float</span> <span style="color:#434f54">for</span> <span style="color:#434f54">f32</span><span style="color:#a61717">&gt;</span>::<span style="color:#434f54">from_bits</span>:
+  <span style="color:#d35400">flds</span>   <span style="color:#8a7b52">0x4</span>(<span style="color:#434f54">%esp</span>)
+  <span style="color:#d35400">retl</span>   </code></pre></div>
 <p>Hang on, what&rsquo;s this <code>flds</code> instruction? We see it in the debug version above, too. It&rsquo;s not there if you disassemble the build for 64-bit:</p>
-
-<pre><code>core::f32::&lt;impl core::num::Float for f32&gt;::from_bits:
-  movd   %edi, %xmm0
-  retq   
-</code></pre>
-
-<p>So what does it do? I&rsquo;m pretty familiar with x86 assembly, but I&rsquo;d never seen this instruction before. Googling it brings up <a href="https://c9x.me/x86/html/file_module_x86_id_100.html">this page in the x86 reference</a>, which says that it pushes the argument onto the FPU register stack. See, what most people call x86 is actually an extension known as <a href="https://en.wikipedia.org/wiki/X87">x87</a>, which implementes floating point operations on top of x86. One common <a href="https://en.wikipedia.org/wiki/X86_calling_conventions">calling convention</a> for x87 is to return integer arguments in <code>%eax</code> and floating point arguments on the FPU stack, using the <code>fstps</code> instruction in the code that calls our function in order to load the returned value. This is what <code>flds</code> is doing here, returning the argument as a float. Ah, but whenever the CPU operates on a float it&rsquo;s allowed to quieten it, and sure enough <code>fld</code> quietens sNaNs that were passed to it. With LLDB we can read the state of the registers and memory, so let&rsquo;s check out what happens between <code>flds</code> and <code>fstps</code>.</p>
+<div class="highlight"><pre style="background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-gas" data-lang="gas"><span style="color:#434f54">core:</span><span style="color:#a61717">:</span><span style="color:#434f54">f32:</span><span style="color:#a61717">:&lt;</span><span style="color:#d35400">impl</span> <span style="color:#434f54">core</span>::<span style="color:#434f54">num</span>::<span style="color:#434f54">Float</span> <span style="color:#434f54">for</span> <span style="color:#434f54">f32</span><span style="color:#a61717">&gt;</span>::<span style="color:#434f54">from_bits</span>:
+  <span style="color:#d35400">movd</span>   <span style="color:#434f54">%edi</span>, <span style="color:#434f54">%xmm0</span>
+  <span style="color:#d35400">retq</span>   </code></pre></div>
+<p>So what does it do? I&rsquo;m pretty familiar with x86 assembly, but I&rsquo;d never seen this instruction before. Googling it brings up <a href="https://c9x.me/x86/html/file_module_x86_id_100.html">this page in the x86 reference</a>, which says that it pushes the argument onto the FPU register stack. See, what most people call x86 is actually an extension known as <a href="https://en.wikipedia.org/wiki/X87">x87</a>, which implementes floating point operations on top of x86. One common <a href="https://en.wikipedia.org/wiki/X86_calling_conventions">calling convention</a> for x87 is to return integer arguments in <code>%eax</code> and floating point arguments on the FPU stack, using the <code>fstps</code> instruction to load the returned value after control is returned to the caller. This is what <code>flds</code> is doing here, returning the argument as a float. Ah, but whenever the CPU operates on a float it&rsquo;s allowed to quieten it, and sure enough <code>fld</code> quietens sNaNs that were passed to it. With LLDB we can read the state of the registers and memory, so let&rsquo;s check out what happens between <code>flds</code> and <code>fstps</code>.</p>
 
 <pre><code>(lldb) run
 ## SNIP ##
@@ -183,7 +171,7 @@ fn it_works() {
 ## SNIP ##
 </code></pre>
 
-<p>You can see we&rsquo;ve stopped on our problematic <code>flds</code> instruction. Let&rsquo;s check out the value of <code>0x4(%esp)</code> (i.e. the value of <code>%esp</code> plus <code>0x4</code>).</p>
+<p>You can see that we&rsquo;ve stopped on our problematic <code>flds</code> instruction. Let&rsquo;s check out the data pointed to by <code>0x4(%esp)</code> (i.e. <code>%esp</code> plus <code>0x4</code>).</p>
 
 <pre><code>(lldb) register read esp
     esp = 0xf77fee3c
@@ -215,7 +203,7 @@ fn it_works() {
 0xf77fee54: 0xffe00000
 </code></pre>
 
-<p>There we go, that&rsquo;s a quiet NaN. That&rsquo;s the first time that I&rsquo;ve seen <em>the very act of extracting something to a function</em> cause tests to fail where they would have otherwise succeeded.</p>
+<p>There we go, that&rsquo;s a quiet NaN. That&rsquo;s the first time that I&rsquo;ve seen <em>the very act of returning something from a function</em> cause tests to fail where they would have succeeded if it had been done inline.</p>
 
 <p>So the solution? I wrote <a href="https://github.com/Vurich/nan-preserving-float/blob/master/src/lib.rs">a wrapper around <code>u32</code>/<code>u64</code></a> that converts to <code>f32</code>/<code>f64</code> when doing operations. This essentially fools the CPU into thinking that these values are integers unless it&rsquo;s doing binary operations on them, and so when you pass them in and out of functions it uses the <code>%eax</code> register and preserves their bit patterns. Since WebAssembly requires that you quieten NaNs when doing binary operations, this doesn&rsquo;t cause a problem.</p>
 
