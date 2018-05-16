@@ -71,78 +71,78 @@
 <p>The ideal situation would be to have the tooling support and professional language design of general-purpose languages for the blockchain, and that&rsquo;s what <a href="https://webassembly.org/">WebAssembly</a> can help provide. WebAssembly is a VM target that (unlike most virtual machines) generally tries to match the semantics of a CPU architecture like ARM or x86 rather than trying to match the semantics of the language that runs on it. As a result, many languages can compile to it unchanged - since most programming languages are built to expose the semantics of the CPU at some level, having the VM emulate a CPU is a good lowest-common-denominator. It also allows us to use world-class optimising compilers that were built for ISAs like x86 and ARM - very important when you&rsquo;re charging by the instruction. <code>solc</code> has an <code>--optimize</code> flag but as far as I can tell all that it does is <a href="https://github.com/ethereum/solidity/blob/develop/libevmasm/JumpdestRemover.cpp">remove unused jump targets from the list of allowed targets in the assembly&rsquo;s metadata</a>, which is more of a security feature than an optimisation. Certainly, it&rsquo;s years behind even hobbyist C compilers and decades behind something like LLVM, which often <a href="http://troubles.md/posts/the-power-of-compilers/">writes better assembly than a human hand-compiling the same code</a>.</p>
 
 <p>One downside, however, is that these general-purpose languages were not built to write smart contracts in. That, however, can be solved with the right library. Since at Parity we write almost all our code in Rust, you might have gathered that we&rsquo;re quite fond of the language. We&rsquo;ve had experiments in writing smart contracts in Rust for a long time, but the API is still very clunky. You have to manually convert any state that you want to store to and from a 256-bit number (since that&rsquo;s what the EVM stores things as), and since we generate code at compile-time a lot of tools won&rsquo;t work correctly, which negates a large part of the reason that we wanted to use a general-purpose language in the first place! With the current API, to write a simple contract that just does basic arithmetic on a stored number you need to write a lot of code:</p>
-<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-rust" data-lang="rust"><span style="color:#66d9ef">pub</span> <span style="color:#66d9ef">mod</span> foo_contract {
-  <span style="color:#66d9ef">use</span> pwasm_ethereum;
-  <span style="color:#66d9ef">use</span> pwasm_std::<span style="color:#f92672">*</span>;
-  <span style="color:#66d9ef">use</span> pwasm_std::hash::H256;
-  <span style="color:#66d9ef">use</span> bigint::U256;
+<div class="highlight"><pre style="background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-rust" data-lang="rust"><span style="color:#728e00">pub</span> <span style="color:#728e00">mod</span> <span style="color:#434f54">foo_contract</span> {
+  <span style="color:#728e00">use</span> <span style="color:#434f54">pwasm_ethereum</span>;
+  <span style="color:#728e00">use</span> <span style="color:#434f54">pwasm_std</span>::<span style="color:#728e00">*</span>;
+  <span style="color:#728e00">use</span> <span style="color:#434f54">pwasm_std</span>::<span style="color:#434f54">hash</span>::<span style="color:#434f54">H256</span>;
+  <span style="color:#728e00">use</span> <span style="color:#434f54">bigint</span>::<span style="color:#434f54">U256</span>;
 
-  <span style="color:#66d9ef">use</span> pwasm_abi_derive::eth_abi;
+  <span style="color:#728e00">use</span> <span style="color:#434f54">pwasm_abi_derive</span>::<span style="color:#434f54">eth_abi</span>;
 
-  <span style="color:#66d9ef">static</span> STATE_KEY: <span style="color:#a6e22e">H256</span> <span style="color:#f92672">=</span> H256([
-    <span style="color:#ae81ff">2</span>, <span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">0</span>,
-    <span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">0</span>, <span style="color:#ae81ff">0</span>
+  <span style="color:#728e00">static</span> <span style="color:#434f54">STATE_KEY</span>: <span style="color:#434f54">H256</span> <span style="color:#728e00">=</span> <span style="color:#434f54">H256</span>([
+    <span style="color:#8a7b52">2</span>, <span style="color:#8a7b52">0</span>, <span style="color:#8a7b52">0</span>, <span style="color:#8a7b52">0</span>, <span style="color:#8a7b52">0</span>, <span style="color:#8a7b52">0</span>, <span style="color:#8a7b52">0</span>, <span style="color:#8a7b52">0</span>, <span style="color:#8a7b52">0</span>, <span style="color:#8a7b52">0</span>, <span style="color:#8a7b52">0</span>, <span style="color:#8a7b52">0</span>, <span style="color:#8a7b52">0</span>, <span style="color:#8a7b52">0</span>, <span style="color:#8a7b52">0</span>, <span style="color:#8a7b52">0</span>,
+    <span style="color:#8a7b52">0</span>, <span style="color:#8a7b52">0</span>, <span style="color:#8a7b52">0</span>, <span style="color:#8a7b52">0</span>, <span style="color:#8a7b52">0</span>, <span style="color:#8a7b52">0</span>, <span style="color:#8a7b52">0</span>, <span style="color:#8a7b52">0</span>, <span style="color:#8a7b52">0</span>, <span style="color:#8a7b52">0</span>, <span style="color:#8a7b52">0</span>, <span style="color:#8a7b52">0</span>, <span style="color:#8a7b52">0</span>, <span style="color:#8a7b52">0</span>, <span style="color:#8a7b52">0</span>, <span style="color:#8a7b52">0</span>
   ]);
 
-  <span style="color:#75715e">#[eth_abi(FooEndpoint)]</span>
-  <span style="color:#66d9ef">pub</span> <span style="color:#66d9ef">trait</span> FooInterface {
-    <span style="color:#e6db74">/// This is called when the contract gets deployed on-chain
-</span><span style="color:#e6db74"></span>    <span style="color:#66d9ef">fn</span> <span style="color:#a6e22e">constructor</span>(<span style="color:#f92672">&amp;</span><span style="color:#66d9ef">mut</span> self, initial: <span style="color:#a6e22e">U256</span>);
-    <span style="color:#e6db74">/// Add a number to the total
-</span><span style="color:#e6db74"></span>    <span style="color:#66d9ef">fn</span> <span style="color:#a6e22e">add</span>(<span style="color:#f92672">&amp;</span><span style="color:#66d9ef">mut</span> self, to_add: <span style="color:#a6e22e">U256</span>);
-    <span style="color:#e6db74">/// Get the total
-</span><span style="color:#e6db74"></span>    <span style="color:#66d9ef">fn</span> <span style="color:#a6e22e">get</span>(<span style="color:#f92672">&amp;</span><span style="color:#66d9ef">mut</span> self) -&gt; <span style="color:#a6e22e">U256</span>;
+  <span style="color:#728e00">#[eth_abi(FooEndpoint)]</span>
+  <span style="color:#728e00">pub</span> <span style="color:#728e00">trait</span> <span style="color:#434f54">FooInterface</span> {
+    <span style="color:#7f8c8d">/// This is called when the contract gets deployed on-chain
+</span><span style="color:#7f8c8d"></span>    <span style="color:#728e00">fn</span> <span style="color:#d35400">constructor</span>(<span style="color:#728e00">&amp;</span><span style="color:#728e00">mut</span> <span style="color:#434f54">self</span>, <span style="color:#434f54">initial</span>: <span style="color:#434f54">U256</span>);
+    <span style="color:#7f8c8d">/// Add a number to the total
+</span><span style="color:#7f8c8d"></span>    <span style="color:#728e00">fn</span> <span style="color:#d35400">add</span>(<span style="color:#728e00">&amp;</span><span style="color:#728e00">mut</span> <span style="color:#434f54">self</span>, <span style="color:#434f54">to_add</span>: <span style="color:#434f54">U256</span>);
+    <span style="color:#7f8c8d">/// Get the total
+</span><span style="color:#7f8c8d"></span>    <span style="color:#728e00">fn</span> <span style="color:#d35400">get</span>(<span style="color:#728e00">&amp;</span><span style="color:#728e00">mut</span> <span style="color:#434f54">self</span>) -&gt; <span style="color:#434f54">U256</span>;
   }
 
-  <span style="color:#66d9ef">pub</span> <span style="color:#66d9ef">struct</span> <span style="color:#a6e22e">FooContract</span>;
+  <span style="color:#728e00">pub</span> <span style="color:#728e00">struct</span> <span style="color:#434f54">FooContract</span>;
 
-  <span style="color:#66d9ef">impl</span> FooInterface <span style="color:#66d9ef">for</span> FooContract {
-    <span style="color:#66d9ef">fn</span> <span style="color:#a6e22e">constructor</span>(<span style="color:#f92672">&amp;</span><span style="color:#66d9ef">mut</span> self, initial: <span style="color:#a6e22e">U256</span>) {
-      pwasm_ethereum::write(
-        <span style="color:#f92672">&amp;</span>STATE_KEY,
-        <span style="color:#f92672">&amp;</span>initial.into()
+  <span style="color:#728e00">impl</span> <span style="color:#434f54">FooInterface</span> <span style="color:#728e00">for</span> <span style="color:#434f54">FooContract</span> {
+    <span style="color:#728e00">fn</span> <span style="color:#d35400">constructor</span>(<span style="color:#728e00">&amp;</span><span style="color:#728e00">mut</span> <span style="color:#434f54">self</span>, <span style="color:#434f54">initial</span>: <span style="color:#434f54">U256</span>) {
+      <span style="color:#434f54">pwasm_ethereum</span>::<span style="color:#434f54">write</span>(
+        <span style="color:#728e00">&amp;</span><span style="color:#434f54">STATE_KEY</span>,
+        <span style="color:#728e00">&amp;</span><span style="color:#434f54">initial</span>.<span style="color:#434f54">into</span>()
       );
     }
     
-    <span style="color:#66d9ef">fn</span> <span style="color:#a6e22e">add</span>(<span style="color:#f92672">&amp;</span><span style="color:#66d9ef">mut</span> self, to_add: <span style="color:#a6e22e">U256</span>) {
-      <span style="color:#66d9ef">let</span> current_state: <span style="color:#a6e22e">U256</span> <span style="color:#f92672">=</span>
-        pwasm_ethereum::read(<span style="color:#f92672">&amp;</span>STATE_KEY).into();
+    <span style="color:#728e00">fn</span> <span style="color:#d35400">add</span>(<span style="color:#728e00">&amp;</span><span style="color:#728e00">mut</span> <span style="color:#434f54">self</span>, <span style="color:#434f54">to_add</span>: <span style="color:#434f54">U256</span>) {
+      <span style="color:#728e00">let</span> <span style="color:#434f54">current_state</span>: <span style="color:#434f54">U256</span> <span style="color:#728e00">=</span>
+        <span style="color:#434f54">pwasm_ethereum</span>::<span style="color:#434f54">read</span>(<span style="color:#728e00">&amp;</span><span style="color:#434f54">STATE_KEY</span>).<span style="color:#434f54">into</span>();
 
-      <span style="color:#66d9ef">let</span> new_state <span style="color:#f92672">=</span> current_state <span style="color:#f92672">+</span> to_add;
+      <span style="color:#728e00">let</span> <span style="color:#434f54">new_state</span> <span style="color:#728e00">=</span> <span style="color:#434f54">current_state</span> <span style="color:#728e00">+</span> <span style="color:#434f54">to_add</span>;
       
-      pwasm_ethereum::write(
-        <span style="color:#f92672">&amp;</span>STATE_KEY, <span style="color:#f92672">&amp;</span>new_state.into()
+      <span style="color:#434f54">pwasm_ethereum</span>::<span style="color:#434f54">write</span>(
+        <span style="color:#728e00">&amp;</span><span style="color:#434f54">STATE_KEY</span>, <span style="color:#728e00">&amp;</span><span style="color:#434f54">new_state</span>.<span style="color:#434f54">into</span>()
       );
     }
 
-    <span style="color:#66d9ef">fn</span> <span style="color:#a6e22e">get</span>(<span style="color:#f92672">&amp;</span><span style="color:#66d9ef">mut</span> self) -&gt; <span style="color:#a6e22e">U256</span> {
-      pwasm_ethereum::read(<span style="color:#f92672">&amp;</span>STATE_KEY).into()
+    <span style="color:#728e00">fn</span> <span style="color:#d35400">get</span>(<span style="color:#728e00">&amp;</span><span style="color:#728e00">mut</span> <span style="color:#434f54">self</span>) -&gt; <span style="color:#434f54">U256</span> {
+      <span style="color:#434f54">pwasm_ethereum</span>::<span style="color:#434f54">read</span>(<span style="color:#728e00">&amp;</span><span style="color:#434f54">STATE_KEY</span>).<span style="color:#434f54">into</span>()
     }
   }
 }
 
-<span style="color:#75715e">// We have to import a trait in order to use `dispatch`
-</span><span style="color:#75715e">// and `dispatch_ctor`.
-</span><span style="color:#75715e"></span><span style="color:#66d9ef">use</span> pwasm_abi::eth::EndpointInterface;
+<span style="color:#95a5a6">// We have to import a trait in order to use `dispatch`
+</span><span style="color:#95a5a6">// and `dispatch_ctor`.
+</span><span style="color:#95a5a6"></span><span style="color:#728e00">use</span> <span style="color:#434f54">pwasm_abi</span>::<span style="color:#434f54">eth</span>::<span style="color:#434f54">EndpointInterface</span>;
 
-<span style="color:#75715e">#[no_mangle]</span>
-<span style="color:#66d9ef">pub</span> <span style="color:#66d9ef">fn</span> <span style="color:#a6e22e">call</span>() {
-  <span style="color:#66d9ef">let</span> <span style="color:#66d9ef">mut</span> endpoint <span style="color:#f92672">=</span> foo_contract::FooEndpoint::new(
-    foo_contract::FooContract
+<span style="color:#728e00">#[no_mangle]</span>
+<span style="color:#728e00">pub</span> <span style="color:#728e00">fn</span> <span style="color:#d35400">call</span>() {
+  <span style="color:#728e00">let</span> <span style="color:#728e00">mut</span> <span style="color:#434f54">endpoint</span> <span style="color:#728e00">=</span> <span style="color:#434f54">foo_contract</span>::<span style="color:#434f54">FooEndpoint</span>::<span style="color:#434f54">new</span>(
+    <span style="color:#434f54">foo_contract</span>::<span style="color:#434f54">FooContract</span>
   );
 
-  pwasm_ethereum::ret(
-    <span style="color:#f92672">&amp;</span>endpoint.dispatch(<span style="color:#f92672">&amp;</span>pwasm_ethereum::input())
+  <span style="color:#434f54">pwasm_ethereum</span>::<span style="color:#434f54">ret</span>(
+    <span style="color:#728e00">&amp;</span><span style="color:#434f54">endpoint</span>.<span style="color:#434f54">dispatch</span>(<span style="color:#728e00">&amp;</span><span style="color:#434f54">pwasm_ethereum</span>::<span style="color:#434f54">input</span>())
   );
 }
 
-<span style="color:#75715e">#[no_mangle]</span>
-<span style="color:#66d9ef">pub</span> <span style="color:#66d9ef">fn</span> <span style="color:#a6e22e">deploy</span>() {
-  <span style="color:#66d9ef">let</span> <span style="color:#66d9ef">mut</span> endpoint <span style="color:#f92672">=</span> foo_contract::FooEndpoint::new(
-    foo_contract::FooContract
+<span style="color:#728e00">#[no_mangle]</span>
+<span style="color:#728e00">pub</span> <span style="color:#728e00">fn</span> <span style="color:#d35400">deploy</span>() {
+  <span style="color:#728e00">let</span> <span style="color:#728e00">mut</span> <span style="color:#434f54">endpoint</span> <span style="color:#728e00">=</span> <span style="color:#434f54">foo_contract</span>::<span style="color:#434f54">FooEndpoint</span>::<span style="color:#434f54">new</span>(
+    <span style="color:#434f54">foo_contract</span>::<span style="color:#434f54">FooContract</span>
   );
 
-  endpoint.dispatch_ctor(<span style="color:#f92672">&amp;</span>pwasm_ethereum::input());
+  <span style="color:#434f54">endpoint</span>.<span style="color:#434f54">dispatch_ctor</span>(<span style="color:#728e00">&amp;</span><span style="color:#434f54">pwasm_ethereum</span>::<span style="color:#434f54">input</span>());
 }</code></pre></div>
 <p>This is, in a word, awful. The lines of boilerplate outnumber the lines of real logic by more than 10 to 1 (about 3 lines of real logic buried within over 50 lines of boilerplate). It has a bunch of fluff that has no use at all - the <code>self</code> parameter is never used because all state is read and written using <code>pwasm_ethereum::read</code> and <code>pwasm_ethereum::write</code>. You need to write <code>#[no_mangle]</code> over the <code>call</code> and <code>deploy</code> functions. There is no way that you&rsquo;d figure out the <code>pwasm_ethereum::ret(&amp;endpoint.dispatch(&amp;pwasm_ethereum::input()))</code> incantation without a tutorial, it&rsquo;s totally undiscoverable. You can&rsquo;t get reliable code completion without compiling the entire binary since it uses a procedural macro (which can run arbitrary code). Not only that, but you need the procedural macro because without it you&rsquo;d have no chance of correctly handling the function calls, except that the only thing that the procedural macro actually does for you is dispatch incoming methods to the right place and deserialize input/serialize output. Another frustrating thing is that although Rust has fantastic support for enforcing immutability (much better than Solidity&rsquo;s equivalent), we never use it here. We just take <code>&amp;mut self</code> for everything and then never use it. This is a great first start, and it&rsquo;s exciting to have Rust code really running on our testnet, but it&rsquo;s got a long way to go before it is usable for real smart contract development by regular people.</p>
 
@@ -157,90 +157,90 @@
 </ul>
 
 <p>With that in mind, here is what I would imagine the previous contract would look like with this new API (the crate name I chose is just <code>pwasm</code> but that&rsquo;s up for bikeshedding):</p>
-<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-rust" data-lang="rust"><span style="color:#75715e">#[macro_use]</span>
-<span style="color:#66d9ef">extern</span> <span style="color:#66d9ef">crate</span> pwasm;
-<span style="color:#75715e">#[macro_use]</span>
-<span style="color:#66d9ef">extern</span> <span style="color:#66d9ef">crate</span> serde_derive;
-<span style="color:#66d9ef">extern</span> <span style="color:#66d9ef">crate</span> serde;
+<div class="highlight"><pre style="background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-rust" data-lang="rust"><span style="color:#728e00">#[macro_use]</span>
+<span style="color:#728e00">extern</span> <span style="color:#728e00">crate</span> <span style="color:#434f54">pwasm</span>;
+<span style="color:#728e00">#[macro_use]</span>
+<span style="color:#728e00">extern</span> <span style="color:#728e00">crate</span> <span style="color:#434f54">serde_derive</span>;
+<span style="color:#728e00">extern</span> <span style="color:#728e00">crate</span> <span style="color:#434f54">serde</span>;
 
-<span style="color:#66d9ef">use</span> pwasm::{Contract, ContractDef};
+<span style="color:#728e00">use</span> <span style="color:#434f54">pwasm</span>::{<span style="color:#434f54">Contract</span>, <span style="color:#434f54">ContractDef</span>};
 
-<span style="color:#75715e">#[derive(Serialize, Deserialize)]</span>
-<span style="color:#66d9ef">pub</span> <span style="color:#66d9ef">struct</span> <span style="color:#a6e22e">State</span> {
-  current: <span style="color:#a6e22e">U256</span>,
+<span style="color:#728e00">#[derive(Serialize, Deserialize)]</span>
+<span style="color:#728e00">pub</span> <span style="color:#728e00">struct</span> <span style="color:#434f54">State</span> {
+  <span style="color:#434f54">current</span>: <span style="color:#434f54">U256</span>,
 }
 
-contract<span style="color:#f92672">!</span>(foo_contract);
+<span style="color:#434f54">contract</span><span style="color:#728e00">!</span>(<span style="color:#434f54">foo_contract</span>);
 
-<span style="color:#66d9ef">fn</span> <span style="color:#a6e22e">foo_contract</span>() -&gt; <span style="color:#a6e22e">impl</span> ContractDef<span style="color:#f92672">&lt;</span>State<span style="color:#f92672">&gt;</span> {
-  messages<span style="color:#f92672">!</span> {
-    Add(U256);
-    Get() -&gt; <span style="color:#a6e22e">U256</span>;
+<span style="color:#728e00">fn</span> <span style="color:#d35400">foo_contract</span>() -&gt; <span style="color:#434f54">impl</span> <span style="color:#434f54">ContractDef</span><span style="color:#728e00">&lt;</span><span style="color:#434f54">State</span><span style="color:#728e00">&gt;</span> {
+  <span style="color:#434f54">messages</span><span style="color:#728e00">!</span> {
+    <span style="color:#434f54">Add</span>(<span style="color:#434f54">U256</span>);
+    <span style="color:#434f54">Get</span>() -&gt; <span style="color:#434f54">U256</span>;
   }
 
-  Contract::new()
-    .constructor(<span style="color:#f92672">|</span>_txdata, initial<span style="color:#f92672">|</span> State {
-      current: <span style="color:#a6e22e">initial</span>,
+  <span style="color:#434f54">Contract</span>::<span style="color:#434f54">new</span>()
+    .<span style="color:#434f54">constructor</span>(<span style="color:#728e00">|</span><span style="color:#434f54">_txdata</span>, <span style="color:#434f54">initial</span><span style="color:#728e00">|</span> <span style="color:#434f54">State</span> {
+      <span style="color:#434f54">current</span>: <span style="color:#434f54">initial</span>,
     })
-    <span style="color:#75715e">// These type annotations aren&#39;t necessary, they&#39;re just
-</span><span style="color:#75715e"></span>    <span style="color:#75715e">// to show that we don&#39;t receive a mutable reference to the
-</span><span style="color:#75715e"></span>    <span style="color:#75715e">// state in the `Get` method.
-</span><span style="color:#75715e"></span>    .on_msg_mut::<span style="color:#f92672">&lt;</span>Add<span style="color:#f92672">&gt;</span>(<span style="color:#f92672">|</span>_env: <span style="color:#66d9ef">&amp;</span><span style="color:#a6e22e">mut</span> EthEnv, state: <span style="color:#66d9ef">&amp;</span><span style="color:#a6e22e">mut</span> State, to_add<span style="color:#f92672">|</span> {
-      state.current <span style="color:#f92672">+=</span> to_add;
+    <span style="color:#95a5a6">// These type annotations aren&#39;t necessary, they&#39;re just
+</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">// to show that we don&#39;t receive a mutable reference to the
+</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">// state in the `Get` method.
+</span><span style="color:#95a5a6"></span>    .<span style="color:#434f54">on_msg_mut</span>::<span style="color:#728e00">&lt;</span><span style="color:#434f54">Add</span><span style="color:#728e00">&gt;</span>(<span style="color:#728e00">|</span><span style="color:#434f54">_env</span>: <span style="color:#00979d">&amp;</span><span style="color:#434f54">mut</span> <span style="color:#434f54">EthEnv</span>, <span style="color:#434f54">state</span>: <span style="color:#00979d">&amp;</span><span style="color:#434f54">mut</span> <span style="color:#434f54">State</span>, <span style="color:#434f54">to_add</span><span style="color:#728e00">|</span> {
+      <span style="color:#434f54">state</span>.<span style="color:#434f54">current</span> <span style="color:#728e00">+=</span> <span style="color:#434f54">to_add</span>;
     })
-    .on_msg::<span style="color:#f92672">&lt;</span>Get<span style="color:#f92672">&gt;</span>(<span style="color:#f92672">|</span>_env: <span style="color:#66d9ef">&amp;</span><span style="color:#a6e22e">EthEnv</span>, state: <span style="color:#66d9ef">&amp;</span><span style="color:#a6e22e">State</span>, ()<span style="color:#f92672">|</span> state.current.clone())
+    .<span style="color:#434f54">on_msg</span>::<span style="color:#728e00">&lt;</span><span style="color:#434f54">Get</span><span style="color:#728e00">&gt;</span>(<span style="color:#728e00">|</span><span style="color:#434f54">_env</span>: <span style="color:#00979d">&amp;</span><span style="color:#434f54">EthEnv</span>, <span style="color:#434f54">state</span>: <span style="color:#00979d">&amp;</span><span style="color:#434f54">State</span>, ()<span style="color:#728e00">|</span> <span style="color:#434f54">state</span>.<span style="color:#434f54">current</span>.<span style="color:#434f54">clone</span>())
 }</code></pre></div>
 <p>Much nicer, I think. It may look weird at first since it no longer looks like defining functions on a type, but there&rsquo;s a method to my decision to ditch, um, methods. For a start, using types to represent methods makes it easier to define idiomatic interfaces to external contracts. If an external contract uses a different naming convention to Rust&rsquo;s (which if you&rsquo;re calling a Solidity contract, it probably does) you don&rsquo;t have to have the method names exposed to Rust directly match up with the external contract&rsquo;s. Doing it this way also enables us to better utilise Rust&rsquo;s tooling, we get documentation for free (in the form of <code>rustdoc</code>), whereas we&rsquo;d have to manually maintain documentation on the syntax for our macro. Adding new features can be done by libraries using the trait system, whereas prodedural macros don&rsquo;t compose by default. For example, you could implement a library for defining contracts as state machines without touching the code of <code>pwasm</code> itself.</p>
 
 <p>One way to look at this is that it matches the semantics of a web server like <code>express</code>, you have immutable <code>GET</code> requests and mutable <code>POST</code> requests, all of which have endpoints on well-defined paths and have well-defined input types. For example, in Rust you can use the <code>actix-web</code> crate to make a server that looks like the following:</p>
-<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-rust" data-lang="rust">server::new(<span style="color:#f92672">||</span> {
-  App::new()
-    .route(
-      <span style="color:#e6db74">&#34;/{id}/{name}&#34;</span>,
-      http::Method::GET,
-      <span style="color:#f92672">|</span>info: <span style="color:#a6e22e">Path</span><span style="color:#f92672">&lt;</span>(<span style="color:#66d9ef">u32</span>, String)<span style="color:#f92672">&gt;|</span> {
-        format<span style="color:#f92672">!</span>(<span style="color:#e6db74">&#34;Hello {}! id:{}&#34;</span>, info.<span style="color:#ae81ff">1</span>, info.<span style="color:#ae81ff">0</span>)
+<div class="highlight"><pre style="background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-rust" data-lang="rust"><span style="color:#434f54">server</span>::<span style="color:#434f54">new</span>(<span style="color:#728e00">||</span> {
+  <span style="color:#434f54">App</span>::<span style="color:#434f54">new</span>()
+    .<span style="color:#434f54">route</span>(
+      <span style="color:#7f8c8d">&#34;/{id}/{name}&#34;</span>,
+      <span style="color:#434f54">http</span>::<span style="color:#434f54">Method</span>::<span style="color:#434f54">GET</span>,
+      <span style="color:#728e00">|</span><span style="color:#434f54">info</span>: <span style="color:#434f54">Path</span><span style="color:#728e00">&lt;</span>(<span style="color:#00979d">u32</span>, <span style="color:#728e00">String</span>)<span style="color:#728e00">&gt;|</span> {
+        <span style="color:#434f54">format</span><span style="color:#728e00">!</span>(<span style="color:#7f8c8d">&#34;Hello {}! id:{}&#34;</span>, <span style="color:#434f54">info</span>.<span style="color:#8a7b52">1</span>, <span style="color:#434f54">info</span>.<span style="color:#8a7b52">0</span>)
       }
     )
-  }).bind(<span style="color:#e6db74">&#34;127.0.0.1:8080&#34;</span>)
-    .unwrap()
-    .run();</code></pre></div>
+  }).<span style="color:#434f54">bind</span>(<span style="color:#7f8c8d">&#34;127.0.0.1:8080&#34;</span>)
+    .<span style="color:#434f54">unwrap</span>()
+    .<span style="color:#434f54">run</span>();</code></pre></div>
 <p>It uses <code>serde</code> (the standard serialisation and deserialisation framework for Rust) instead of hand-rolling our own serialisation. Hand-rolling serialisation is fine for our own types, but it means that if we want to allow users to serialise their own types we either need them to write a lot of boilerplate or we need to write an equivalent of <code>serde_derive</code> for our own serialisation method, duplicating work. It uses Rust&rsquo;s inbuilt mutability guarantees to enforce that we don&rsquo;t do any mutation in the functions that don&rsquo;t need it. It&rsquo;s immutable-by-default, you have to write <code>_mut</code> if you want a mutable method. This can prevent bugs caused by accidental mutation and can also allow us to avoid spending gas to save the state if we know that the method can&rsquo;t mutate it. The <code>contract</code> and <code>messages</code> macros are just <code>macro_rules!</code> macros, and you can quite simply write contracts without them. They just expand to something like the following:</p>
-<div class="highlight"><pre style="color:#f8f8f2;background-color:#272822;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-rust" data-lang="rust"><span style="color:#75715e">// ...
-</span><span style="color:#75715e"></span>
-<span style="color:#75715e">#[no_mangle]</span>
-<span style="color:#66d9ef">fn</span> <span style="color:#a6e22e">__pwasm_ethereum_call</span>() {
-  pwasm::ret(
-    foo_contract().call(pwasm::read_state(), pwasm::input())
+<div class="highlight"><pre style="background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-rust" data-lang="rust"><span style="color:#95a5a6">// ...
+</span><span style="color:#95a5a6"></span>
+<span style="color:#728e00">#[no_mangle]</span>
+<span style="color:#728e00">fn</span> <span style="color:#d35400">__pwasm_ethereum_call</span>() {
+  <span style="color:#434f54">pwasm</span>::<span style="color:#434f54">ret</span>(
+    <span style="color:#434f54">foo_contract</span>().<span style="color:#434f54">call</span>(<span style="color:#434f54">pwasm</span>::<span style="color:#434f54">read_state</span>(), <span style="color:#434f54">pwasm</span>::<span style="color:#434f54">input</span>())
   );
 }
 
-<span style="color:#75715e">#[no_mangle]</span>
-<span style="color:#66d9ef">fn</span> <span style="color:#a6e22e">__pwasm_ethereum_deploy</span>() {
-  <span style="color:#66d9ef">let</span> state <span style="color:#f92672">=</span> foo_contract().construct(pwasm::input());
-  pwasm::write_state(state);
+<span style="color:#728e00">#[no_mangle]</span>
+<span style="color:#728e00">fn</span> <span style="color:#d35400">__pwasm_ethereum_deploy</span>() {
+  <span style="color:#728e00">let</span> <span style="color:#434f54">state</span> <span style="color:#728e00">=</span> <span style="color:#434f54">foo_contract</span>().<span style="color:#434f54">construct</span>(<span style="color:#434f54">pwasm</span>::<span style="color:#434f54">input</span>());
+  <span style="color:#434f54">pwasm</span>::<span style="color:#434f54">write_state</span>(<span style="color:#434f54">state</span>);
 }
 
-<span style="color:#66d9ef">fn</span> <span style="color:#a6e22e">foo_contract</span>() -&gt; <span style="color:#a6e22e">impl</span> ContractDef<span style="color:#f92672">&lt;</span>State<span style="color:#f92672">&gt;</span> {
-  <span style="color:#66d9ef">struct</span> <span style="color:#a6e22e">Add</span>;
-  <span style="color:#66d9ef">struct</span> <span style="color:#a6e22e">Get</span>;
+<span style="color:#728e00">fn</span> <span style="color:#d35400">foo_contract</span>() -&gt; <span style="color:#434f54">impl</span> <span style="color:#434f54">ContractDef</span><span style="color:#728e00">&lt;</span><span style="color:#434f54">State</span><span style="color:#728e00">&gt;</span> {
+  <span style="color:#728e00">struct</span> <span style="color:#434f54">Add</span>;
+  <span style="color:#728e00">struct</span> <span style="color:#434f54">Get</span>;
 
-  <span style="color:#66d9ef">impl</span> pwasm::Message <span style="color:#66d9ef">for</span> Add {
-    <span style="color:#66d9ef">type</span> <span style="color:#a6e22e">Input</span> <span style="color:#f92672">=</span> U256;
-    <span style="color:#66d9ef">type</span> <span style="color:#a6e22e">Output</span> <span style="color:#f92672">=</span> ();
+  <span style="color:#728e00">impl</span> <span style="color:#434f54">pwasm</span>::<span style="color:#434f54">Message</span> <span style="color:#728e00">for</span> <span style="color:#434f54">Add</span> {
+    <span style="color:#728e00">type</span> <span style="color:#434f54">Input</span> <span style="color:#728e00">=</span> <span style="color:#434f54">U256</span>;
+    <span style="color:#728e00">type</span> <span style="color:#434f54">Output</span> <span style="color:#728e00">=</span> ();
     
-    <span style="color:#66d9ef">const</span> NAME: <span style="color:#66d9ef">&amp;</span><span style="color:#66d9ef">str</span> <span style="color:#f92672">=</span> <span style="color:#e6db74">&#34;Add&#34;</span>;
+    <span style="color:#728e00">const</span> <span style="color:#434f54">NAME</span>: <span style="color:#00979d">&amp;</span><span style="color:#00979d">str</span> <span style="color:#728e00">=</span> <span style="color:#7f8c8d">&#34;Add&#34;</span>;
   }
 
-  <span style="color:#66d9ef">impl</span> pwasm::Message <span style="color:#66d9ef">for</span> Get {
-    <span style="color:#66d9ef">type</span> <span style="color:#a6e22e">Input</span> <span style="color:#f92672">=</span> ();
-    <span style="color:#66d9ef">type</span> <span style="color:#a6e22e">Output</span> <span style="color:#f92672">=</span> U256;
+  <span style="color:#728e00">impl</span> <span style="color:#434f54">pwasm</span>::<span style="color:#434f54">Message</span> <span style="color:#728e00">for</span> <span style="color:#434f54">Get</span> {
+    <span style="color:#728e00">type</span> <span style="color:#434f54">Input</span> <span style="color:#728e00">=</span> ();
+    <span style="color:#728e00">type</span> <span style="color:#434f54">Output</span> <span style="color:#728e00">=</span> <span style="color:#434f54">U256</span>;
     
-    <span style="color:#66d9ef">const</span> NAME: <span style="color:#66d9ef">&amp;</span><span style="color:#66d9ef">str</span> <span style="color:#f92672">=</span> <span style="color:#e6db74">&#34;Get&#34;</span>;
+    <span style="color:#728e00">const</span> <span style="color:#434f54">NAME</span>: <span style="color:#00979d">&amp;</span><span style="color:#00979d">str</span> <span style="color:#728e00">=</span> <span style="color:#7f8c8d">&#34;Get&#34;</span>;
   }
 
-  <span style="color:#75715e">// ...
-</span><span style="color:#75715e"></span>}</code></pre></div>
+  <span style="color:#95a5a6">// ...
+</span><span style="color:#95a5a6"></span>}</code></pre></div>
 <p>Additionally, the contract&rsquo;s methods take a <code>EthEnv</code> parameter which represents the blockchain environment itself, and can be used to (for example) get the current block header or send messages to another contract. We can use Rust&rsquo;s mutability guarantees again to enforce that an immutable method can&rsquo;t call a mutable method or suchlike. We also use a simple type-level state machine to make sure you write precisely one constructor (although it&rsquo;s not yet possible in Rust&rsquo;s type system to prevent you writing two handlers for the same message).</p>
 
 <p>Another benefit of so much being regular Rust code is that you can go to <code>Contract</code> page in the documentation and quite easily infer how to write a contract from that alone. Since you need to go through the <code>state</code> parameter to access the contract&rsquo;s state and the <code>env</code> parameter to access the blockchain, it&rsquo;s easy to work out the complete set of everything a smart contract can do just by going to the documentation page for <code>EthEnv</code>. There are no top-level functions that manipulate global state and if you get anything wrong the compiler will give you a nice error message.</p>
