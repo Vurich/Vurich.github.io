@@ -97,7 +97,7 @@
 (<span style="color:#434f54">assert_return</span> (<span style="color:#434f54">invoke</span> <span style="color:#7f8c8d">&#34;i32.reinterpret_f32&#34;</span>
                        (<span style="color:#434f54">f32.const</span> <span style="color:#434f54">-nan:0x200000</span>))
                (<span style="color:#434f54">i32.const</span> <span style="color:#434f54">0xffa00000</span>))</code></pre></div>
-<p>All other tests were succeeding, but doing a bitwise cast from integer to float and vice-versa was failing. Furthermore, these tests all succeeded on x86_64 (i.e. when compiled for 64-bit), they only failed on x86 (i.e. when compiled for 32-bit). Lastly, the difference between the expected value and the received value was only one bit. Instead of returning a float with the bit pattern <code>0x7fa000000</code> it would return <code>0x7fe000000</code> instead. If you&rsquo;ve worked with NaNs before, you might have noticed something:</p>
+<p>All other tests were succeeding, but doing a bitwise cast from integer to float and vice-versa was failing. Furthermore, these tests all succeeded on x86_64 (i.e. when compiled for 64-bit), they only failed on x86 (i.e. when compiled for 32-bit). Lastly, the difference between the expected value and the received value was only one bit. Instead of returning a float with the bit pattern <code>0x7fa00000</code> it would return <code>0x7fe00000</code> instead. If you&rsquo;ve worked with NaNs before, you might have noticed something:</p>
 
 <pre><code>Expected: 0b11111111010000000000000000000000000
 Got:      0b11111111110000000000000000000000000
@@ -127,7 +127,7 @@ Got:      0b11111111110000000000000000000000000
 
   <span style="color:#728e00">Ok</span>(<span style="color:#434f54">InstructionOutcome</span>::<span style="color:#434f54">RunNextInstruction</span>)
 }</code></pre></div>
-<p>That <code>v.transmute_into()</code> call was returning <code>0x7fe000000</code> instead of <code>0x7fa000000</code>! Hang on, like the name implies, <code>v.transmute_into()</code> should just be a transmute, it should just reinterpret the bits. I looked at the source code, and sure enough:</p>
+<p>That <code>v.transmute_into()</code> call was returning <code>0x7fe00000</code> instead of <code>0x7fa00000</code>! Hang on, like the name implies, <code>v.transmute_into()</code> should just be a transmute, it should just reinterpret the bits. I looked at the source code, and sure enough:</p>
 <div class="highlight"><pre style="background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-rust" data-lang="rust"><span style="color:#728e00">impl</span> <span style="color:#434f54">TransmuteInto</span><span style="color:#728e00">&lt;</span><span style="color:#00979d">f32</span><span style="color:#728e00">&gt;</span> <span style="color:#728e00">for</span> <span style="color:#00979d">i32</span> {
   <span style="color:#728e00">fn</span> <span style="color:#d35400">transmute_into</span>(<span style="color:#434f54">self</span>) -&gt; <span style="color:#00979d">f32</span> {
     <span style="color:#00979d">f32</span>::<span style="color:#434f54">from_bits</span>(<span style="color:#434f54">self</span>)
