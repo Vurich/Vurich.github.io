@@ -4,19 +4,19 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     
-    <title>Improving SmallVec creation speed by 60% and why that shouldn&#39;t matter to you</title>
+    <title>Improving SmallVec speed by 60% and why that shouldn&#39;t matter to you</title>
     
     <meta name="description" content="">
     
-    <meta itemprop="name" content="Improving SmallVec creation speed by 60% and why that shouldn&#39;t matter to you">
+    <meta itemprop="name" content="Improving SmallVec speed by 60% and why that shouldn&#39;t matter to you">
     
     
-    <meta name="og:title" content="Improving SmallVec creation speed by 60% and why that shouldn&#39;t matter to you">
+    <meta name="og:title" content="Improving SmallVec speed by 60% and why that shouldn&#39;t matter to you">
     
         <meta name="image" content="http://troubles.md/floppies.png">
         <meta name="og:image" content="http://troubles.md/floppies.png">
        <meta name="og:url" content="http://troubles.md/posts/improving-smallvec/">
-    <meta name="og:site_name" content="Improving SmallVec creation speed by 60% and why that shouldn&#39;t matter to you">
+    <meta name="og:site_name" content="Improving SmallVec speed by 60% and why that shouldn&#39;t matter to you">
     <meta name="og:type" content="article">
     
     <meta name="article:tag" content="">
@@ -68,7 +68,7 @@
 
 
 <div class="content">
-  <h1>Improving SmallVec creation speed by 60% and why that shouldn&#39;t matter to you <aside></aside></h1>
+  <h1>Improving SmallVec speed by 60% and why that shouldn&#39;t matter to you <aside></aside></h1>
   <p><code>smallvec</code> is a library by the Servo team for reducing the number of allocations for dynamic arrays in the case that most of those arrays are below a certain size. For example, if you&rsquo;re creating a vector that normally has less than 100 items but could have more, you can reduce the load on the allocator by using a <code>SmallVec</code> like so:</p>
 <div class="highlight"><pre style="background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-rust" data-lang="rust"><span style="color:#728e00">fn</span> <span style="color:#d35400">print_iterator</span><span style="color:#728e00">&lt;</span><span style="color:#434f54">T</span><span style="color:#728e00">&gt;</span>(<span style="color:#434f54">i</span>: <span style="color:#434f54">T</span>)
 <span style="color:#728e00">where</span>
@@ -339,7 +339,7 @@
 
 <p>We&rsquo;re much closer to <code>Vec</code>&rsquo;s speed than before, and at last <code>SmallVec</code> is faster for the case where it doesn&rsquo;t have to allocate.</p>
 
-<p>I think that the important takeaways from this are: you don&rsquo;t need to perform every optimisation yourself, but you should make your code as simple and optimisable as possible. It is necessary, however, manually perform any optimisations that changes the meaning of your program. Even if an optimisation seems like it&rsquo;d have a small effect, if you can&rsquo;t expect the compiler to perform it then I think it&rsquo;s worth trying. It&rsquo;s very possible that it can unlock more compiler optimisations. Above all else, though, it&rsquo;s important to actually benchmark your optimisations. You wouldn&rsquo;t expect your code to be correct without testing it (even if that testing is by running the program and clicking around) so why would you expect your code to be fast if you don&rsquo;t benchmark it. <code>SmallVec</code> actually had no comparisons to <code>Vec</code> in its test suite until I wrote some for the purposes of this article. If you&rsquo;re using <code>SmallVec</code> for its performance benefits, it&rsquo;s worth benchmarking your program using <code>Vec</code> with <code>Vec::with_capacity</code> instead. Usually the simpler implementation is the faster one.</p>
+<p>I think that the important takeaways from this are: you don&rsquo;t need to perform every optimisation yourself, but you should make your code as simple and optimisable as possible. It is necessary, however, manually perform any optimisations that changes the meaning of your program. Even if an optimisation seems like it&rsquo;d have a small effect, if you can&rsquo;t expect the compiler to perform it then I think it&rsquo;s worth trying. It&rsquo;s very possible that it can unlock more compiler optimisations. Above all else, though, it&rsquo;s important to actually benchmark your optimisations. You wouldn&rsquo;t expect your code to be correct without testing it (even if that testing is by running the program and clicking around) so why would you expect your code to be fast if you don&rsquo;t benchmark it. <code>SmallVec</code> actually had no comparisons to <code>Vec</code> in its test suite until I wrote some for the purposes of this article. There are a <em>lot</em> of crates out there that currently use <code>smallvec</code> - <a href="https://crates.io/crates/smallvec/reverse_dependencies">crates.io lists 9 pages of crates using it at time of writing</a>. If you&rsquo;re using <code>smallvec</code> for its performance benefits, it&rsquo;s worth benchmarking your program using <code>Vec</code> with <code>Vec::with_capacity</code> instead. Usually the simpler implementation is the faster one.</p>
 <div class="footnotes">
 
 <hr />
@@ -347,9 +347,9 @@
 <ol>
 <li id="fn:smallvec-benches">To make the benchmarks fair I preallocated the vector with the same number of elements that the <code>SmallVec</code> preallocated on the stack (16). I believe this is fair because in a real program you can always easily replace calls to <code>Vec::new</code> with <code>Vec::with_capacity(N)</code> where <code>N</code> was the number that you would have put into <code>SmallVec::&lt;[T; N]&gt;::new</code>. To see the exact methodology you can see <a href="https://github.com/servo/rust-smallvec/commit/291eb90ed1eaabf0e02987de9c3c76d1b85b6a53">this commit</a>.
  <a class="footnote-return" href="#fnref:smallvec-benches"><sup>[return]</sup></a></li>
-<li id="fn:insert-is-unsound">During the writing of this article I realised that this function is actually unsound. One interesting thing about writing unsafe Rust is that safe code is never to be trusted. You can use values from safe code as hints but it should be impossible to cause unsoundness by returning incorrect values from safe code. This means that <code>Iterator::size_hint</code> can return essentially whatever it wants. It should be possible, too, for safe code to panic at any point without causing soundness (although it&rsquo;s allowed to cause arbitrarily bad behaviour otherwise, like infinite loops or leaking data). You can see a visual explanation of this bug in <a href="https://gist.github.com/Vurich/ffa55d8e69377a64c9708e07c2db2a1b">this gist</a>. At the time of writing it&rsquo;s still unfixed but <a href="https://github.com/servo/rust-smallvec/issues/96">I opened an issue</a> where you can track the progress of this fix.
+<li id="fn:insert-is-unsound">During the writing of this article I realised that this function is actually unsound. One interesting thing about writing unsafe Rust is that safe code is never to be trusted. You can use values from safe code as hints but it should be impossible to cause unsoundness by returning incorrect values from safe code. This means, for example, that <code>Iterator::size_hint</code> can return essentially whatever it wants. Also, it should be possible for safe code to panic at any point without causing unsoundness (although it&rsquo;s allowed to cause arbitrarily bad behaviour otherwise, like infinite loops or leaking data). You can see a visual explanation of this bug in <a href="https://gist.github.com/Vurich/ffa55d8e69377a64c9708e07c2db2a1b">this gist</a>. At the time of writing it&rsquo;s still unfixed but <a href="https://github.com/servo/rust-smallvec/issues/96">I opened an issue</a> where you can track its progress.
  <a class="footnote-return" href="#fnref:insert-is-unsound"><sup>[return]</sup></a></li>
-<li id="fn:set-len-on-drop">It&rsquo;s actually possible to do the increment in a register and just add the code to actually store the length into the code to clean up after a panic. <code>Vec</code> actually does this explicitly with a <code>SetLenOnDrop</code> struct. Again though, it&rsquo;s a complex optimisation and you can&rsquo;t rely on LLVM applying it.
+<li id="fn:set-len-on-drop">It&rsquo;s actually possible for LLVM to do the increment in a register and just add the code to actually store the length into the panic cleanup code. <code>Vec</code> actually does this explicitly with a <code>SetLenOnDrop</code> struct. Again though, it&rsquo;s a complex optimisation and you can&rsquo;t rely on LLVM applying it.
  <a class="footnote-return" href="#fnref:set-len-on-drop"><sup>[return]</sup></a></li>
 </ol>
 </div>
