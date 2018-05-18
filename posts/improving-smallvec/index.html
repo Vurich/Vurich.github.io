@@ -4,19 +4,19 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     
-    <title>Improving SmallVec speed by 60% and why that shouldn&#39;t matter to you</title>
+    <title>Improving SmallVec&#39;s speed by 60% and why that shouldn&#39;t matter to you</title>
     
     <meta name="description" content="">
     
-    <meta itemprop="name" content="Improving SmallVec speed by 60% and why that shouldn&#39;t matter to you">
+    <meta itemprop="name" content="Improving SmallVec&#39;s speed by 60% and why that shouldn&#39;t matter to you">
     
     
-    <meta name="og:title" content="Improving SmallVec speed by 60% and why that shouldn&#39;t matter to you">
+    <meta name="og:title" content="Improving SmallVec&#39;s speed by 60% and why that shouldn&#39;t matter to you">
     
         <meta name="image" content="http://troubles.md/floppies.png">
         <meta name="og:image" content="http://troubles.md/floppies.png">
        <meta name="og:url" content="http://troubles.md/posts/improving-smallvec/">
-    <meta name="og:site_name" content="Improving SmallVec speed by 60% and why that shouldn&#39;t matter to you">
+    <meta name="og:site_name" content="Improving SmallVec&#39;s speed by 60% and why that shouldn&#39;t matter to you">
     <meta name="og:type" content="article">
     
     <meta name="article:tag" content="">
@@ -68,7 +68,7 @@
 
 
 <div class="content">
-  <h1>Improving SmallVec speed by 60% and why that shouldn&#39;t matter to you <aside></aside></h1>
+  <h1>Improving SmallVec&#39;s speed by 60% and why that shouldn&#39;t matter to you <aside></aside></h1>
   <p><code>smallvec</code> is a library by the Servo team for reducing the number of allocations for dynamic arrays in the case that most of those arrays are below a certain size. For example, if you&rsquo;re creating a vector that normally has less than 100 items but could have more, you can reduce the load on the allocator by using a <code>SmallVec</code> like so:</p>
 <div class="highlight"><pre style="background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-rust" data-lang="rust"><span style="color:#728e00">fn</span> <span style="color:#d35400">print_iterator</span><span style="color:#728e00">&lt;</span><span style="color:#434f54">T</span><span style="color:#728e00">&gt;</span>(<span style="color:#434f54">i</span>: <span style="color:#434f54">T</span>)
 <span style="color:#728e00">where</span>
