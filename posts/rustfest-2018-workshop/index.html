@@ -4,19 +4,19 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     
-    <title>Rustfest Paris Workshop: Fastware</title>
+    <title>RustFest Paris Workshop: Fastware</title>
     
     <meta name="description" content="">
     
-    <meta itemprop="name" content="Rustfest Paris Workshop: Fastware">
+    <meta itemprop="name" content="RustFest Paris Workshop: Fastware">
     
     
-    <meta name="og:title" content="Rustfest Paris Workshop: Fastware">
+    <meta name="og:title" content="RustFest Paris Workshop: Fastware">
     
         <meta name="image" content="http://troubles.md/floppies.png">
         <meta name="og:image" content="http://troubles.md/floppies.png">
        <meta name="og:url" content="http://troubles.md/posts/rustfest-2018-workshop/">
-    <meta name="og:site_name" content="Rustfest Paris Workshop: Fastware">
+    <meta name="og:site_name" content="RustFest Paris Workshop: Fastware">
     <meta name="og:type" content="article">
     
     <meta name="article:tag" content="">
@@ -69,7 +69,7 @@
 
 
 <div class="content">
-  <h1>Rustfest Paris Workshop: Fastware <aside></aside></h1>
+  <h1>RustFest Paris Workshop: Fastware <aside></aside></h1>
   
 
 <blockquote>
@@ -291,19 +291,23 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 9 measured; 0 filtered out</code
 <div class="highlight"><pre class="chroma"><code class="language-rust" data-lang="rust"><span class="k">extern</span><span class="w"> </span><span class="k">crate</span><span class="w"> </span><span class="n">fnv</span><span class="p">;</span><span class="w">
 </span><span class="w">
 </span><span class="w"></span><span class="k">use</span><span class="w"> </span><span class="n">fnv</span>::<span class="n">FnvHashMap</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">HashMap</span><span class="p">;</span></code></pre></div>
-<h2 id="intermediate-advanced">Intermediate/Advanced</h2>
+<h2 id="intermediate-2">Intermediate</h2>
 
 <p>There are other &ldquo;fast hashmaps&rdquo; for Rust, like <a href="https://crates.io/crates/fxhash"><code>fxhash</code></a>. Which one is faster for these inputs?</p>
+
+<h2 id="advanced-2">Advanced</h2>
+
+<p>Apart from error messages, there&rsquo;s not really a reason to store the full name of the variable. We could memoize the hash of the variable name and then use that with a <code>HashMap</code> with the identity function as the hashing algorithm. There doesn&rsquo;t seem to be an implementation of <code>IdentityHashMap</code> on [crates.io][crates] but it&rsquo;s easy enough to write.</p>
 
 <h1 id="exercise-4-intermediate-and-advanced-only">Exercise 4 (Intermediate and advanced only)</h1>
 
 <p>Although we made cloning the scope a lot cheaper, we still clone it in cases that are not necessary. For example, if we call a function with no arguments that doesn&rsquo;t define any internal variables, we don&rsquo;t need to clone the scope at all. We can avoid that by either passing a reference to an owned <code>HashMap</code> if possible, and an immutable reference otherwise. If it turns out that we need to clone the hashmap then we can replace the reference with an owned <code>HashMap</code> and mutate it from there. The standard library has a type to make this easy: <a href="https://doc.rust-lang.org/std/borrow/enum.Cow.html"><code>Cow</code></a>.</p>
 
-<h2 id="intermediate-2">Intermediate</h2>
+<h2 id="intermediate-3">Intermediate</h2>
 
 <p>Use <code>std::borrow::Cow</code> to avoid cloning the scope unless absolutely necessary.</p>
 
-<h2 id="advanced-2">Advanced</h2>
+<h2 id="advanced-3">Advanced</h2>
 
 <p>Explore the use of <a href="https://github.com/orium/rpds">persistent data structures</a> to maximise sharing. Do they help?</p>
 

@@ -12,7 +12,7 @@
     
     
     <item>
-      <title>Rustfest Paris Workshop: Fastware</title>
+      <title>RustFest Paris Workshop: Fastware</title>
       <link>http://troubles.md/posts/rustfest-2018-workshop/</link>
       <pubDate>Tue, 22 May 2018 11:22:48 +0200</pubDate>
       
@@ -238,19 +238,23 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 9 measured; 0 filtered out&lt;/c
 &lt;div class=&#34;highlight&#34;&gt;&lt;pre class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;&lt;span class=&#34;k&#34;&gt;extern&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;k&#34;&gt;crate&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;fnv&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
 &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
 &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;use&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;fnv&lt;/span&gt;::&lt;span class=&#34;n&#34;&gt;FnvHashMap&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;k&#34;&gt;as&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;HashMap&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
-&lt;h2 id=&#34;intermediate-advanced&#34;&gt;Intermediate/Advanced&lt;/h2&gt;
+&lt;h2 id=&#34;intermediate-2&#34;&gt;Intermediate&lt;/h2&gt;
 
 &lt;p&gt;There are other &amp;ldquo;fast hashmaps&amp;rdquo; for Rust, like &lt;a href=&#34;https://crates.io/crates/fxhash&#34;&gt;&lt;code&gt;fxhash&lt;/code&gt;&lt;/a&gt;. Which one is faster for these inputs?&lt;/p&gt;
+
+&lt;h2 id=&#34;advanced-2&#34;&gt;Advanced&lt;/h2&gt;
+
+&lt;p&gt;Apart from error messages, there&amp;rsquo;s not really a reason to store the full name of the variable. We could memoize the hash of the variable name and then use that with a &lt;code&gt;HashMap&lt;/code&gt; with the identity function as the hashing algorithm. There doesn&amp;rsquo;t seem to be an implementation of &lt;code&gt;IdentityHashMap&lt;/code&gt; on [crates.io][crates] but it&amp;rsquo;s easy enough to write.&lt;/p&gt;
 
 &lt;h1 id=&#34;exercise-4-intermediate-and-advanced-only&#34;&gt;Exercise 4 (Intermediate and advanced only)&lt;/h1&gt;
 
 &lt;p&gt;Although we made cloning the scope a lot cheaper, we still clone it in cases that are not necessary. For example, if we call a function with no arguments that doesn&amp;rsquo;t define any internal variables, we don&amp;rsquo;t need to clone the scope at all. We can avoid that by either passing a reference to an owned &lt;code&gt;HashMap&lt;/code&gt; if possible, and an immutable reference otherwise. If it turns out that we need to clone the hashmap then we can replace the reference with an owned &lt;code&gt;HashMap&lt;/code&gt; and mutate it from there. The standard library has a type to make this easy: &lt;a href=&#34;https://doc.rust-lang.org/std/borrow/enum.Cow.html&#34;&gt;&lt;code&gt;Cow&lt;/code&gt;&lt;/a&gt;.&lt;/p&gt;
 
-&lt;h2 id=&#34;intermediate-2&#34;&gt;Intermediate&lt;/h2&gt;
+&lt;h2 id=&#34;intermediate-3&#34;&gt;Intermediate&lt;/h2&gt;
 
 &lt;p&gt;Use &lt;code&gt;std::borrow::Cow&lt;/code&gt; to avoid cloning the scope unless absolutely necessary.&lt;/p&gt;
 
-&lt;h2 id=&#34;advanced-2&#34;&gt;Advanced&lt;/h2&gt;
+&lt;h2 id=&#34;advanced-3&#34;&gt;Advanced&lt;/h2&gt;
 
 &lt;p&gt;Explore the use of &lt;a href=&#34;https://github.com/orium/rpds&#34;&gt;persistent data structures&lt;/a&gt; to maximise sharing. Do they help?&lt;/p&gt;
 
