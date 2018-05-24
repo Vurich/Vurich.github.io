@@ -297,7 +297,7 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 9 measured; 0 filtered out</code
 
 <h2 id="advanced-2">Advanced</h2>
 
-<p>Apart from error messages, there&rsquo;s not really a reason to store the full name of the variable. We could memoize the hash of the variable name and then use that with a <code>HashMap</code> with the identity function as the hashing algorithm. There doesn&rsquo;t seem to be an implementation of <code>IdentityHashMap</code> on [crates.io][crates] but it&rsquo;s easy enough to write.</p>
+<p>Apart from error messages, there&rsquo;s not really a reason to store the full name of the variable. We could memoize the hash of the variable name and then use that to key a <code>HashMap</code> with the identity function as the hashing algorithm. There doesn&rsquo;t seem to be an implementation of <code>IdentityHashMap</code> on [crates.io][crates] but it&rsquo;s easy enough to write.</p>
 
 <h1 id="exercise-4-intermediate-and-advanced-only">Exercise 4 (Intermediate and advanced only)</h1>
 
