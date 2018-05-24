@@ -3,6 +3,11 @@
   xmlns:xhtml="http://www.w3.org/1999/xhtml">
   
   <url>
+    <loc>http://troubles.md/posts/rustfest-2018-workshop/</loc>
+    <lastmod>2018-05-22T11:22:48+02:00</lastmod>
+  </url>
+  
+  <url>
     <loc>http://troubles.md/posts/improving-smallvec/</loc>
     <lastmod>2018-05-17T14:44:51+02:00</lastmod>
   </url>
@@ -34,7 +39,7 @@
   
   <url>
     <loc>http://troubles.md/posts/</loc>
-    <lastmod>2018-05-17T14:44:51+02:00</lastmod>
+    <lastmod>2018-05-22T11:22:48+02:00</lastmod>
     <priority>0</priority>
   </url>
   
@@ -45,7 +50,7 @@
   
   <url>
     <loc>http://troubles.md/</loc>
-    <lastmod>2018-05-17T14:44:51+02:00</lastmod>
+    <lastmod>2018-05-22T11:22:48+02:00</lastmod>
     <priority>0</priority>
   </url>
   

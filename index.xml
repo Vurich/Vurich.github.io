@@ -6,10 +6,305 @@
     <description>Recent content on troubles.md</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Thu, 17 May 2018 14:44:51 +0200</lastBuildDate>
+    <lastBuildDate>Tue, 22 May 2018 11:22:48 +0200</lastBuildDate>
     
         <atom:link href="http://troubles.md/index.xml" rel="self" type="application/rss+xml" />
     
+    
+    <item>
+      <title>Rustfest Paris Workshop: Fastware</title>
+      <link>http://troubles.md/posts/rustfest-2018-workshop/</link>
+      <pubDate>Tue, 22 May 2018 11:22:48 +0200</pubDate>
+      
+      <guid>http://troubles.md/posts/rustfest-2018-workshop/</guid>
+      <description>
+
+&lt;blockquote&gt;
+&lt;p&gt;&amp;ldquo;In almost every computation a great variety of arrangements for the succession of the processes is possible, and various considerations must influence the selection amongst them for the purposes of a Calculating Engine. One essential object is to choose that arrangement which shall tend to reduce to a minimum the time necessary for completing the calculation.&amp;rdquo;&lt;/p&gt;
+
+&lt;h3 id=&#34;ada-lovelace-1843&#34;&gt;Ada Lovelace, 1843&lt;/h3&gt;
+&lt;/blockquote&gt;
+
+&lt;h2 id=&#34;prerequisites&#34;&gt;Prerequisites&lt;/h2&gt;
+
+&lt;p&gt;You should get these from your package manager where possible, but if you don&amp;rsquo;t have a package manager installed then you can download them from the linked websites. Your package manager will be &lt;a href=&#34;https://chocolatey.org/&#34;&gt;choco&lt;/a&gt; on Windows, &lt;a href=&#34;https://brew.sh/&#34;&gt;homebrew&lt;/a&gt; on macOS, and on Linux it could be one of &lt;code&gt;apt-get&lt;/code&gt;, &lt;code&gt;pacman&lt;/code&gt;, &lt;code&gt;rpm&lt;/code&gt;, &lt;code&gt;nix&lt;/code&gt;, &lt;code&gt;cron&lt;/code&gt;+&lt;code&gt;wget&lt;/code&gt;, your secretary logging into your computer and downloading unsigned binaries while you sleep, etc.&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;You&amp;rsquo;ll need &lt;a href=&#34;https://www.rust-lang.org/&#34;&gt;Rust&lt;/a&gt; to compile your code, of course&lt;/li&gt;
+&lt;li&gt;The sample code for this is &lt;a href=&#34;https://github.com/Vurich/rustfest-perf-workshop&#34;&gt;here&lt;/a&gt;, although you can definitely use your own code too! Good targets for optimisation are virtual machines, image processing libraries and games. For games, though, if you&amp;rsquo;re using a game engine then your traces might show most of your time taken in the engine&amp;rsquo;s code and not yours.&lt;/li&gt;
+&lt;li&gt;To compare results we can use &lt;code&gt;cargo-benchcmp&lt;/code&gt;, just run &lt;code&gt;cargo install cargo-benchcmp&lt;/code&gt; to get it&lt;/li&gt;
+&lt;li&gt;To generate performance traces you&amp;rsquo;ll need &lt;a href=&#34;http://valgrind.org/&#34;&gt;Valgrind&lt;/a&gt;, this requires macOS or Linux. If you&amp;rsquo;re on Windows then you can use my Valgrind traces, see below&lt;/li&gt;
+&lt;li&gt;To view the results you can use &lt;a href=&#34;https://kcachegrind.github.io/html/Home.html&#34;&gt;KCachegrind&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;You&amp;rsquo;ll probably have seen &lt;code&gt;perf&lt;/code&gt;+&lt;code&gt;flamegraph&lt;/code&gt; recommended before by &lt;a href=&#34;http://troubles.md/posts/rust-optimization/&#34;&gt;certain very smart and handsome fellows&lt;/a&gt; but I&amp;rsquo;ve actually had more luck with &lt;code&gt;callgrind&lt;/code&gt; (included in Valgrind). You can try to use &lt;code&gt;perf&lt;/code&gt; but although it can give very good outputs for some programs it&amp;rsquo;s quite inconsistent. Also, using &lt;code&gt;callgrind&lt;/code&gt; means you can use KCachegrind, which is the best thing since sliced bread. In the linked article I said that Valgrind was scary, but that was one of my patented Uninformed Opinions&amp;trade;. It&amp;rsquo;s actually very intuitive and, honestly, easier to use than the &amp;ldquo;simple&amp;rdquo; solution of using &lt;code&gt;perf&lt;/code&gt;.&lt;/p&gt;
+
+&lt;h2 id=&#34;finding-our-slow-sections&#34;&gt;Finding our slow sections&lt;/h2&gt;
+
+&lt;p&gt;It&amp;rsquo;s often said&lt;sup class=&#34;footnote-ref&#34; id=&#34;fnref:often-said&#34;&gt;&lt;a href=&#34;#fn:often-said&#34;&gt;1&lt;/a&gt;&lt;/sup&gt; that the slowest code is that which has been optimised without benchmarks. You wouldn&amp;rsquo;t expect your code to work if you never ran it, so why should you expect it to be fast if you never benchmarked it? Writing good benchmarks is a bit of an art, because it&amp;rsquo;s really easy to accidentally write benchmarks that make your code seem fast, when really the compiler is applying some optimisations that work in the side-effect-free world of the benchmark but can no longer get applied when you put it out into the wild.&lt;/p&gt;
+
+&lt;p&gt;You should have a few different kinds of benchmarks:&lt;/p&gt;
+
+&lt;ol&gt;
+&lt;li&gt;Ones that operate on real-world data - if you spend all your time optimising but your users never see that speedup then what was the point of doing all that work in the first place?&lt;/li&gt;
+&lt;li&gt;Ones that exercise degenerate cases to make sure that your code isn&amp;rsquo;t fast in the general case but incredibly slow in edge-cases.&lt;/li&gt;
+&lt;li&gt;Ones that exercise real-world cases in confinement, this can help pinpoint where your code is choking.&lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;p&gt;You can see where I added the benchmarks in &lt;a href=&#34;https://github.com/Vurich/rustfest-perf-workshop/commit/f839ff3cd76343e7371eec73de61997fa000f1eb&#34;&gt;this commit&lt;/a&gt; in the sample code repo. I&amp;rsquo;ve heavily commented the benchmarks so you can see my thinking, and I highly recommend you read the comments and the code in that commit to get an idea of what a decent benchmark suite looks like. It&amp;rsquo;s not perfect, more and more-accurate benchmarks could be written, but the point is that our language has very few primitives (function calls, variables, assigment, literals) and so we need benchmarks that exercise each of those.&lt;/p&gt;
+
+&lt;p&gt;Probably you already know [how to run benchmarks in Rust][benchmarks], but doing so isn&amp;rsquo;t actually terribly useful in isolation. Benchmarks alone are essentially meaningless, since they are affected by everything from the current PC setup to the other currently-running programs. Their power comes in comparison.&lt;/p&gt;
+
+&lt;p&gt;If you haven&amp;rsquo;t already, you need to make sure that you&amp;rsquo;re using the nightly release of Rust, since the stable release doesn&amp;rsquo;t allow you to run benchmarks. If you&amp;rsquo;re using &lt;a href=&#34;https://rustup.rs/&#34;&gt;&lt;code&gt;rustup&lt;/code&gt;&lt;/a&gt;, this is simple - just do &lt;code&gt;rustup override set nightly&lt;/code&gt;. If you&amp;rsquo;re not using &lt;code&gt;rustup&lt;/code&gt;, then use &lt;code&gt;rustup&lt;/code&gt;. Sorry, it&amp;rsquo;s really the only convenient way to use nightly Rust.&lt;/p&gt;
+
+&lt;p&gt;To get a baseline benchmark, you can output the results of &lt;code&gt;cargo bench&lt;/code&gt; to a file. On Linux and macOS you can just run &lt;code&gt;cargo bench &amp;gt; baseline.bench&lt;/code&gt;. On each change you can output the new benchmarks to a new file by running &lt;code&gt;cargo bench &amp;gt; new.bench&lt;/code&gt;, then compare the two with &lt;code&gt;cargo benchcmp baseline.bench new.bench&lt;/code&gt;. If you do it now, without making any changes, you should get something that looks like the following:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-text&#34; data-lang=&#34;text&#34;&gt; name                           baseline.bench ns/iter  new.bench ns/iter  diff ns/iter  diff %  speedup 
+ benches::parse_deep_nesting    52,923                  53,618                      695   1.31%   x 0.99 
+ benches::parse_literals        34,167                  34,623                      456   1.33%   x 0.99 
+ benches::parse_many_variables  182,052                 180,939                  -1,113  -0.61%   x 1.01 
+ benches::parse_nested_func     36,798                  37,222                      424   1.15%   x 0.99 
+ benches::parse_real_code       4,578                   4,574                        -4  -0.09%   x 1.00 
+ benches::run_deep_nesting      2,705                   2,722                        17   0.63%   x 0.99 
+ benches::run_many_variables    42,622                  42,193                     -429  -1.01%   x 1.01 
+ benches::run_nested_func       4,563                   4,698                       135   2.96%   x 0.97 
+ benches::run_real_code         141,153                 141,211                      58   0.04%   x 1.00 &lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;You&amp;rsquo;ll notice that even when you run the exact same code twice you can still get slightly different results. You shouldn&amp;rsquo;t trust speedups of less than 2% unless you can very reliably reproduce them.&lt;/p&gt;
+
+&lt;p&gt;So, where do we start? Well, that&amp;rsquo;s what our trusty friend Valgrind is for. Valgrind is an execution framework that allows plugins to analyse a compiled program at quite a deep level. It ships with tools to &lt;a href=&#34;http://valgrind.org/docs/manual/mc-manual.html&#34;&gt;detect memory safety bugs&lt;/a&gt;, to &lt;a href=&#34;http://valgrind.org/docs/manual/hg-manual.html&#34;&gt;report possible deadlocks and race conditions&lt;/a&gt; and - most importantly for us - to &lt;a href=&#34;http://valgrind.org/docs/manual/cl-manual.html&#34;&gt;analyse the time taken by individual functions&lt;/a&gt;. It can&amp;rsquo;t produce output that&amp;rsquo;s very useful to humans without some help, however. Specifically, it needs debuginfo enabled. For release builds (&lt;code&gt;cargo build --release&lt;/code&gt;) you can add that to the &lt;code&gt;Cargo.toml&lt;/code&gt; like so:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-toml&#34; data-lang=&#34;toml&#34;&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;profile&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;release&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt;
+&lt;span class=&#34;nx&#34;&gt;debug&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;kc&#34;&gt;true&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;We need it for benchmarks, however. For that &lt;code&gt;cargo&lt;/code&gt; uses the &lt;code&gt;bench&lt;/code&gt; profile, and so we need to add the following to &lt;code&gt;Cargo.toml&lt;/code&gt;:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-toml&#34; data-lang=&#34;toml&#34;&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;profile&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;nx&#34;&gt;debug&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt;
+&lt;span class=&#34;nx&#34;&gt;debug&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;=&lt;/span&gt; &lt;span class=&#34;kc&#34;&gt;true&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;This is added to the sample project already (see &lt;a href=&#34;https://github.com/Vurich/rustfest-perf-workshop/commit/24a8fab60674dbc70b2ad18df8baba3e2edace65&#34;&gt;this commit&lt;/a&gt;). If you run &lt;code&gt;cargo bench&lt;/code&gt; it will first build the benchmarking binary and then run it, displaying the path on stdout. When I run &lt;code&gt;cargo bench&lt;/code&gt; it looks like this:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-text&#34; data-lang=&#34;text&#34;&gt;jef@jef-pc ~/D/G/V/rustfest&amp;gt; cargo bench
+   Compiling rustfest v0.1.0 (file:///home/jef/Documents/GitHub/Vurich/rustfest)
+    Finished release [optimized] target(s) in 11.84s
+     Running target/release/deps/rustfest-5c3dd55c20998644
+
+running 9 tests
+test benches::parse_deep_nesting   ... bench:      53,041 ns/iter (+/- 18,369)
+test benches::parse_literals       ... bench:      34,433 ns/iter (+/- 5,025)
+test benches::parse_many_variables ... bench:     185,630 ns/iter (+/- 36,507)
+test benches::parse_nested_func    ... bench:      38,114 ns/iter (+/- 6,402)
+test benches::parse_real_code      ... bench:       4,758 ns/iter (+/- 842)
+test benches::run_deep_nesting     ... bench:       2,793 ns/iter (+/- 243)
+test benches::run_many_variables   ... bench:      46,430 ns/iter (+/- 7,715)
+test benches::run_nested_func      ... bench:       5,050 ns/iter (+/- 597)
+test benches::run_real_code        ... bench:     152,798 ns/iter (+/- 46,472)
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 9 measured; 0 filtered out&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;You can see that it displays the binary path on the third line, under &lt;code&gt;Running&lt;/code&gt;. You can then run callgrind on this binary. For me this is &lt;code&gt;target/release/deps/rustfest-5c3dd55c20998644&lt;/code&gt; but for you it could be something else, so use the output of &lt;code&gt;cargo bench&lt;/code&gt; on your machine to see what the binary&amp;rsquo;s name is.&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;h3 id=&#34;important&#34;&gt;Important!&lt;/h3&gt;
+
+&lt;p&gt;The binary&amp;rsquo;s name will change when you change your code, as it&amp;rsquo;s based on a hash of the source code and cargo&amp;rsquo;s build parameters. Therefore it&amp;rsquo;s very important to rerun &lt;code&gt;cargo bench&lt;/code&gt; and run callgrind on the &lt;em&gt;new&lt;/em&gt; binary name. Otherwise you&amp;rsquo;ll be running it on the old binary and it will look like nothing has changed!&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;h2 id=&#34;contents&#34;&gt;Contents:&lt;/h2&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;a href=&#34;#exercise-1&#34;&gt;Exercise 1&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#exercise-2&#34;&gt;Exercise 2&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#exercise-3&#34;&gt;Exercise 3&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#exercise-4-intermediate-and-advanced-only&#34;&gt;Exercise 4&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#further-work-1&#34;&gt;Further work 1&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#further-work-2&#34;&gt;Further work 2&lt;/a&gt;&lt;/li&gt;
+&lt;li&gt;&lt;a href=&#34;#further-work-3-advanced-only&#34;&gt;Further work 3&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h1 id=&#34;exercise-1&#34;&gt;Exercise 1&lt;/h1&gt;
+
+&lt;p&gt;If you&amp;rsquo;re on a platform that Valgrind supports, you can follow the next steps to get a trace. Otherwise, you can use &lt;a href=&#34;https://gist.githubusercontent.com/Vurich/5fc8d700ceaa85c0b185eb493a3d5125/raw/28894cfd8869b377fbb96e7a0a4f1c9e204a213b/callgrind.out.6359&#34;&gt;my trace&lt;/a&gt;. To run callgrind, execute Valgrind with &lt;code&gt;--tool=callgrind&lt;/code&gt; on the benchmark binary. In order to make the benchmark binary actually run the benchmarks (by default it will run tests) you have to additionally pass &lt;code&gt;--bench&lt;/code&gt; as an argument to the binary itself, like so:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-text&#34; data-lang=&#34;text&#34;&gt;valgrind --tool=callgrind target/release/deps/rustfest-5c3dd55c20998644 --bench&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Callgrind actually has lots of options which you can see with &lt;code&gt;--help&lt;/code&gt;, and they&amp;rsquo;re really useful for debugging slowness within functions (as opposed to which functions are slow), but for now we&amp;rsquo;ll just run it with the defaults. This will generate a file with a name like &lt;code&gt;callgrind.out.1234&lt;/code&gt; where &lt;code&gt;1234&lt;/code&gt; is a unique number for each run of callgrind. Run KCachegrind (it&amp;rsquo;s a GUI program, so you probably don&amp;rsquo;t want to start it from the command-line) and open the generated &lt;code&gt;callgrind.out&lt;/code&gt; file. You should see something that looks like so:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;http://troubles.md/rustfest-2018-workshop/kcachegrind.png&#34; alt=&#34;KCachegrind&#39;s home screen&#34; title=&#34;KCachegrind&#39;s home screen&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;This is probably pretty overwhelming. We can whittle down the functions to just our code by typing the name of our project (if you&amp;rsquo;re using the sample project then this will be &lt;code&gt;rustfest&lt;/code&gt;) into the search bar on the left. If we look at the list of functions that take the most time, we can see that after the generated &lt;code&gt;main&lt;/code&gt; function the most time is spent in &lt;code&gt;eval&lt;/code&gt;. Probably you guessed this, what with it being one of only two functions in our module, but hey, it&amp;rsquo;s nice to get confirmation. Let&amp;rsquo;s click on &lt;code&gt;eval&lt;/code&gt; and see what its cost centers are. In the bottom-right, you&amp;rsquo;ll see the list of functions called by &lt;code&gt;eval&lt;/code&gt; in order of their total cost - these are called the &amp;ldquo;callees&amp;rdquo;. You can see a visualisation of the callees in a tree-like structure by clicking &amp;ldquo;callee map&amp;rdquo; at the top, but depending on your tolerance for soulless coloured rectangles the amount of use you can get from this may vary. In the list of callees, you can see that a &lt;em&gt;lot&lt;/em&gt; of time is spent in &lt;code&gt;HashMap::clone&lt;/code&gt; and &lt;code&gt;HashMap::drop&lt;/code&gt;&lt;sup class=&#34;footnote-ref&#34; id=&#34;fnref:rawtable&#34;&gt;&lt;a href=&#34;#fn:rawtable&#34;&gt;2&lt;/a&gt;&lt;/sup&gt;.  Essentially, we keep creating new &lt;code&gt;HashMap&lt;/code&gt;s and then destroying them again:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&#34;http://troubles.md/rustfest-2018-workshop/kcachegrind-callees.png&#34; alt=&#34;`eval`&#39;s callees with `HashMap::clone` and `HashMap::drop` at the top&#34; title=&#34;`eval`&#39;s callees with `HashMap::clone` and `HashMap::drop` at the top&#34; /&gt;&lt;/p&gt;
+
+&lt;p&gt;So where in &lt;code&gt;eval&lt;/code&gt; are we cloning hashmaps? If we look at the source code, the answer is obvious:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;&lt;span class=&#34;k&#34;&gt;pub&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;k&#34;&gt;fn&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;eval&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;program&lt;/span&gt;: &lt;span class=&#34;nc&#34;&gt;Ast&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;variables&lt;/span&gt;: &lt;span class=&#34;kp&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;nc&#34;&gt;mut&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;HashMap&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&#34;nb&#34;&gt;String&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;Value&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;-&amp;gt; &lt;span class=&#34;nc&#34;&gt;Value&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;// ..snip..
+&lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;k&#34;&gt;match&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;program&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;        &lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;// ..snip..
+&lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;        &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;Call&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;func&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;arguments&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;o&#34;&gt;=&amp;gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;            &lt;/span&gt;&lt;span class=&#34;kd&#34;&gt;let&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;func&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;o&#34;&gt;=&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;eval&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;func&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;variables&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;);&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;            &lt;/span&gt;&lt;span class=&#34;k&#34;&gt;match&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;func&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;                &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;Function&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;args&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;body&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;o&#34;&gt;=&amp;gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;                    &lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;// Start a new scope, so all variables defined in the body of the
+&lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;                    &lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;// function don&amp;#39;t leak into the surrounding scope.
+&lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;                    &lt;/span&gt;&lt;span class=&#34;kd&#34;&gt;let&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;k&#34;&gt;mut&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;new_scope&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;o&#34;&gt;=&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;variables&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;clone&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;();&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;                    &lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;//       Clone here ^---------------^
+&lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;                    &lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;// ..snip..
+&lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;                &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;                &lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;// ..snip..
+&lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;            &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;        &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;        &lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;// ..snip..
+&lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;If we look at the callees for &lt;code&gt;clone&lt;/code&gt; and &lt;code&gt;drop&lt;/code&gt; by double-clicking on them we can see that the &lt;code&gt;HashMap&lt;/code&gt; is spending a lot of time recursively cloning and dropping its elements. This is because not only is the &lt;code&gt;HashMap&lt;/code&gt; heap-allocated, but so are its elements. &lt;code&gt;String&lt;/code&gt; is a heap-allocated string that must be allocated, cloned and deallocated, and &lt;code&gt;Value&lt;/code&gt; contains &lt;code&gt;Vec&lt;/code&gt;s and &lt;code&gt;String&lt;/code&gt;s - both heap-allocated. These values are all immutable and so we don&amp;rsquo;t actually need owned, heap-allocated versions of these. There are a couple of optimisations that you can apply here, and I&amp;rsquo;ve seperated them into beginner, intermediate and advanced.&lt;/p&gt;
+
+&lt;h2 id=&#34;beginner&#34;&gt;Beginner&lt;/h2&gt;
+
+&lt;p&gt;Convert our uses of &lt;code&gt;String&lt;/code&gt; to be &lt;code&gt;Rc&amp;lt;String&amp;gt;&lt;/code&gt;. This means that the clone and drop are just adding and subtracting 1 to the reference count, respectively. Run the benchmarks before and after making this change and use &lt;code&gt;cargo benchcmp&lt;/code&gt; to verify that this has made an improvement.&lt;/p&gt;
+
+&lt;h2 id=&#34;intermediate&#34;&gt;Intermediate&lt;/h2&gt;
+
+&lt;p&gt;Same as above, but notice that &lt;code&gt;Rc&amp;lt;String&amp;gt;&lt;/code&gt; actually has &lt;em&gt;two&lt;/em&gt; heap allocations - the &lt;code&gt;Rc&lt;/code&gt; just points to a &lt;em&gt;pointer&lt;/em&gt; to the actual string data. Figure out if there&amp;rsquo;s a way to avoid this. Hint: &lt;code&gt;Rc&lt;/code&gt;&amp;rsquo;s type parameter is &lt;code&gt;?Sized&lt;/code&gt;.&lt;/p&gt;
+
+&lt;h2 id=&#34;advanced&#34;&gt;Advanced&lt;/h2&gt;
+
+&lt;p&gt;Do these strings need to be allocated on the heap at all? Combine actually has &lt;a href=&#34;https://docs.rs/combine/3.3.0/combine/parser/range/fn.recognize.html&#34;&gt;an API for zero-copy parsing&lt;/a&gt;. It requires ensuring that the input can have pointers constructed to it - not possible if you&amp;rsquo;re parsing from an iterator over bytes, for example. To ensure this you can add the following to the parser definition:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-diff&#34; data-lang=&#34;diff&#34;&gt;&lt;span class=&#34;gh&#34;&gt;diff --git a/src/lib.rs b/src/lib.rs
+&lt;/span&gt;&lt;span class=&#34;gh&#34;&gt;index 359915d..6db1190 100644
+&lt;/span&gt;&lt;span class=&#34;gh&#34;&gt;&lt;/span&gt;&lt;span class=&#34;gd&#34;&gt;--- a/src/lib.rs
+&lt;/span&gt;&lt;span class=&#34;gd&#34;&gt;&lt;/span&gt;&lt;span class=&#34;gi&#34;&gt;+++ b/src/lib.rs
+&lt;/span&gt;&lt;span class=&#34;gi&#34;&gt;&lt;/span&gt;&lt;span class=&#34;gu&#34;&gt;@@ -91,7 +91,8 @@ pub fn eval(program: Ast, variables: &amp;amp;mut HashMap&amp;lt;String, Value&amp;gt;) -&amp;gt; Value {
+&lt;/span&gt;&lt;span class=&#34;gu&#34;&gt;&lt;/span&gt; }
+ 
+ parser! {
+&lt;span class=&#34;gd&#34;&gt;-    pub fn expr[I]()(I) -&amp;gt; Ast where [I: combine::Stream&amp;lt;Item = char&amp;gt;] {
+&lt;/span&gt;&lt;span class=&#34;gd&#34;&gt;&lt;/span&gt;&lt;span class=&#34;gi&#34;&gt;+    pub fn expr[&amp;#39;a, I]()(I) -&amp;gt; Ast where [
+&lt;/span&gt;&lt;span class=&#34;gi&#34;&gt;+        I: combine::Stream&amp;lt;Item = char, Range = &amp;amp;&amp;#39;a str&amp;gt; +
+&lt;/span&gt;&lt;span class=&#34;gi&#34;&gt;+        combine::RangeStreamOnce
+&lt;/span&gt;&lt;span class=&#34;gi&#34;&gt;+    ] {
+&lt;/span&gt;&lt;span class=&#34;gi&#34;&gt;&lt;/span&gt;         use combine::parser::char::*;
+         use combine::*;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;I&amp;rsquo;ll leave it to you to figure out the rest.&lt;/p&gt;
+
+&lt;h1 id=&#34;exercise-2&#34;&gt;Exercise 2&lt;/h1&gt;
+
+&lt;p&gt;Benchmark your code before and after making the changes above and compare the results with &lt;code&gt;cargo benchcmp&lt;/code&gt;. Did it help? If so, how much by?&lt;/p&gt;
+
+&lt;p&gt;Even after making cloning our strings cheaper, we still do a lot of clones of values that are expensive to duplicate. We call &lt;code&gt;clone&lt;/code&gt; on &lt;code&gt;Ast&lt;/code&gt; and &lt;code&gt;Value&lt;/code&gt;, both of which can contain &lt;code&gt;Vec&lt;/code&gt;s and &lt;code&gt;Box&lt;/code&gt;s - expensive to clone. Let&amp;rsquo;s try to make those clones a little cheaper.&lt;/p&gt;
+
+&lt;p&gt;A cheap way to avoid clones is as above - use &lt;code&gt;Rc&lt;/code&gt;. It is not necessarily a good thing, though. For a start, it&amp;rsquo;s less ergonomic - only allowing immutable access. It&amp;rsquo;s not necessarily faster in all cases either, since it adds an extra heap allocation and it means that dropping the value incurs a branch. Also, although &lt;code&gt;Rc&lt;/code&gt; supports weak references it won&amp;rsquo;t actually drop the value until all weak references have been destroyed - a possible source of memory leaks. &lt;code&gt;&amp;amp;&lt;/code&gt; pointers do not have this issue - although the compiler gives them special powers, at runtime they&amp;rsquo;re just integers. Both can be used to avoid clones.&lt;/p&gt;
+
+&lt;h2 id=&#34;beginner-1&#34;&gt;Beginner&lt;/h2&gt;
+
+&lt;p&gt;We take an owned &lt;code&gt;Ast&lt;/code&gt; as an argument to &lt;code&gt;eval&lt;/code&gt;, which requires cloning the whole &lt;code&gt;Ast&lt;/code&gt; every time we call &lt;code&gt;eval&lt;/code&gt; again in the loop - this isn&amp;rsquo;t necessary. We can take a borrowed &lt;code&gt;Ast&lt;/code&gt; (&lt;code&gt;&amp;amp;Ast&lt;/code&gt;) and only clone the parts that we need. This should be faster than cloning the entire &lt;code&gt;Ast&lt;/code&gt; on the chance that we need part of it as an owned value.&lt;/p&gt;
+
+&lt;h2 id=&#34;intermediate-1&#34;&gt;Intermediate&lt;/h2&gt;
+
+&lt;p&gt;What other clones are unnecessary? Most of our code is pure and only requires immutable access. However, we still clone the &lt;code&gt;Value&lt;/code&gt;s in our scope every time we access them. Is there a way around this?&lt;/p&gt;
+
+&lt;h2 id=&#34;advanced-1&#34;&gt;Advanced&lt;/h2&gt;
+
+&lt;p&gt;Same as above, but note that most of &lt;code&gt;Value&lt;/code&gt; is actually very cheap to clone. What can we do to take advantage of this fact?&lt;/p&gt;
+
+&lt;h1 id=&#34;exercise-3&#34;&gt;Exercise 3&lt;/h1&gt;
+
+&lt;p&gt;Again, make sure to run benchmarks to ensure you&amp;rsquo;re making your code faster and not slower.&lt;/p&gt;
+
+&lt;p&gt;Check KCachegrind again - just underneath &lt;code&gt;clone&lt;/code&gt; and &lt;code&gt;drop&lt;/code&gt; then next-most time-consuming function is &lt;code&gt;insert&lt;/code&gt;. This is because Rust&amp;rsquo;s default implementation of &lt;code&gt;HashMap&lt;/code&gt; is not as fast as it could be - by design.&lt;/p&gt;
+
+&lt;p&gt;The reasoning behind this is best illustrated with an example. Let&amp;rsquo;s say that we&amp;rsquo;re selling flapjacks on the internet and we want to keep a mapping from customer name to address, in order to know where to send their delicious flapjacks&lt;sup class=&#34;footnote-ref&#34; id=&#34;fnref:flapjacks&#34;&gt;&lt;a href=&#34;#fn:flapjacks&#34;&gt;3&lt;/a&gt;&lt;/sup&gt;. Since we&amp;rsquo;re a small business that has yet to reach &lt;a href=&#34;https://www.youtube.com/watch?v=b2F-DItXtZs&#34;&gt;Web Scale&lt;/a&gt; we&amp;rsquo;ve decided to just use an in-memory &lt;code&gt;HashMap&lt;/code&gt; like so:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;&lt;span class=&#34;k&#34;&gt;struct&lt;/span&gt; &lt;span class=&#34;nc&#34;&gt;ServerState&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;customers&lt;/span&gt;: &lt;span class=&#34;nc&#34;&gt;HashMap&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&#34;nb&#34;&gt;String&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;nb&#34;&gt;String&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Except that the way that &lt;code&gt;HashMap&lt;/code&gt; is implemented is to seperate the storage into some number of &amp;ldquo;buckets&amp;rdquo;, then when you insert or retrieve from the &lt;code&gt;HashMap&lt;/code&gt; you first find the bucket that it&amp;rsquo;s in and then iterate over that bucket until you find the entry with the right key&lt;sup class=&#34;footnote-ref&#34; id=&#34;fnref:hashmap&#34;&gt;&lt;a href=&#34;#fn:hashmap&#34;&gt;4&lt;/a&gt;&lt;/sup&gt;.&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;&lt;span class=&#34;k&#34;&gt;struct&lt;/span&gt; &lt;span class=&#34;nc&#34;&gt;HashMap&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;K&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;V&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;buckets&lt;/span&gt;: &lt;span class=&#34;nb&#34;&gt;Vec&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&#34;nb&#34;&gt;Vec&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;K&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;V&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;gt;&amp;gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;impl&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;K&lt;/span&gt;: &lt;span class=&#34;nc&#34;&gt;Hash&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;o&#34;&gt;+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;nb&#34;&gt;Eq&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;V&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;HashMap&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;// ..snip..
+&lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;k&#34;&gt;fn&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;get&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;bp&#34;&gt;self&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;k&lt;/span&gt;: &lt;span class=&#34;kp&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;nc&#34;&gt;K&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;-&amp;gt; &lt;span class=&#34;nb&#34;&gt;Option&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;lt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;V&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;        &lt;/span&gt;&lt;span class=&#34;kd&#34;&gt;let&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;bucket&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;o&#34;&gt;=&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;bp&#34;&gt;self&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;hash&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;k&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;o&#34;&gt;%&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;bp&#34;&gt;self&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;buckets&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;len&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;();&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;        &lt;/span&gt;&lt;span class=&#34;k&#34;&gt;for&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;ref&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;existing_k&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;k&#34;&gt;ref&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;v&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;k&#34;&gt;in&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;bp&#34;&gt;self&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;buckets&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;bucket&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;            &lt;/span&gt;&lt;span class=&#34;k&#34;&gt;if&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;existing_k&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;o&#34;&gt;==&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;k&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;                &lt;/span&gt;&lt;span class=&#34;nb&#34;&gt;Some&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;v&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;            &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;        &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;        &lt;/span&gt;&lt;span class=&#34;nb&#34;&gt;None&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;If you&amp;rsquo;re an attacker trying to take down this innocent flapjack website and you can manipulate which bucket your customer name goes into, you can simply put all of your entries into the &lt;em&gt;same&lt;/em&gt; bucket. This means that every new insertion or retreival to that one bucket is extremely slow, because it has to do much more comparisons than you normally would have to. The default &lt;code&gt;HashMap&lt;/code&gt; used in Rust has two defences against this. Firstly, it initialises the hashing algorithm with a random seed, which means that because you don&amp;rsquo;t know the initial hasher state you can&amp;rsquo;t run the hashing algorithm many times on your own computer, find some customer names that would go into the same bucket, and then send those to the server. Second, the hashing algorithm is cryptographically secure. This means that there is no way to guess the initial state by just running the hasher many times and seeing the output. The default hashing algorithm is actually pretty fast, but is bad on small keys (like the short variable names in our programs). To improve performance we can use &lt;code&gt;FnvHash&lt;/code&gt; from the &lt;a href=&#34;https://crates.io/crates/fnv&#34;&gt;&lt;code&gt;fnv&lt;/code&gt;&lt;/a&gt; crate.&lt;/p&gt;
+
+&lt;h2 id=&#34;beginner-2&#34;&gt;Beginner&lt;/h2&gt;
+
+&lt;p&gt;Just add &lt;code&gt;FnvHashMap&lt;/code&gt; to your crate, and check the benchmarks.&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;&lt;span class=&#34;k&#34;&gt;extern&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;k&#34;&gt;crate&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;fnv&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;use&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;fnv&lt;/span&gt;::&lt;span class=&#34;n&#34;&gt;FnvHashMap&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;k&#34;&gt;as&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;HashMap&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;h2 id=&#34;intermediate-advanced&#34;&gt;Intermediate/Advanced&lt;/h2&gt;
+
+&lt;p&gt;There are other &amp;ldquo;fast hashmaps&amp;rdquo; for Rust, like &lt;a href=&#34;https://crates.io/crates/fxhash&#34;&gt;&lt;code&gt;fxhash&lt;/code&gt;&lt;/a&gt;. Which one is faster for these inputs?&lt;/p&gt;
+
+&lt;h1 id=&#34;exercise-4-intermediate-and-advanced-only&#34;&gt;Exercise 4 (Intermediate and advanced only)&lt;/h1&gt;
+
+&lt;p&gt;Although we made cloning the scope a lot cheaper, we still clone it in cases that are not necessary. For example, if we call a function with no arguments that doesn&amp;rsquo;t define any internal variables, we don&amp;rsquo;t need to clone the scope at all. We can avoid that by either passing a reference to an owned &lt;code&gt;HashMap&lt;/code&gt; if possible, and an immutable reference otherwise. If it turns out that we need to clone the hashmap then we can replace the reference with an owned &lt;code&gt;HashMap&lt;/code&gt; and mutate it from there. The standard library has a type to make this easy: &lt;a href=&#34;https://doc.rust-lang.org/std/borrow/enum.Cow.html&#34;&gt;&lt;code&gt;Cow&lt;/code&gt;&lt;/a&gt;.&lt;/p&gt;
+
+&lt;h2 id=&#34;intermediate-2&#34;&gt;Intermediate&lt;/h2&gt;
+
+&lt;p&gt;Use &lt;code&gt;std::borrow::Cow&lt;/code&gt; to avoid cloning the scope unless absolutely necessary.&lt;/p&gt;
+
+&lt;h2 id=&#34;advanced-2&#34;&gt;Advanced&lt;/h2&gt;
+
+&lt;p&gt;Explore the use of &lt;a href=&#34;https://github.com/orium/rpds&#34;&gt;persistent data structures&lt;/a&gt; to maximise sharing. Do they help?&lt;/p&gt;
+
+&lt;h1 id=&#34;further-work-1&#34;&gt;Further work 1&lt;/h1&gt;
+
+&lt;p&gt;If you did the beginner or intermediate tasks for the previous exercises, why not try going back and doing the task a level above? If you did the advanced level, are there any more optimisations that you could apply to this? If so, implement them and see if they improve your results.&lt;/p&gt;
+
+&lt;h1 id=&#34;further-work-2&#34;&gt;Further work 2&lt;/h1&gt;
+
+&lt;p&gt;Try doing this same process on one of your own projects. Add debuginfo to the benchmarks, run it with &lt;code&gt;valgrind --tool=cachegrind /path/to/benchmarks --bench&lt;/code&gt; and then open the results in KCachegrind. See if there&amp;rsquo;s some way to reduce unnecessary copies, unnecessary work, and/or unnecessary allocation.&lt;/p&gt;
+
+&lt;h1 id=&#34;further-work-3-advanced-only&#34;&gt;Further work 3 (Advanced only)&lt;/h1&gt;
+
+&lt;p&gt;Most modern languages don&amp;rsquo;t operate directly on the AST of their program, they compile to bytecode first. One important thing to notice about this language is that (because &lt;code&gt;if&lt;/code&gt; statements aren&amp;rsquo;t lazily evaluated and there are no loops) it&amp;rsquo;s impossible for a program to conditionally define a variable. Therefore if a variable is defined and accessed within the same function you can just access it by index instead of by name. Unfortunately, because our language is &lt;a href=&#34;https://stackoverflow.com/a/22395580&#34;&gt;dynamically scoped&lt;/a&gt;, we can&amp;rsquo;t do the same when a variable is accessed from the surrounding scope. In this case, we must access it by name. If we&amp;rsquo;re assuming a stack-based virtual machine this would look something like so:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;&lt;span class=&#34;k&#34;&gt;enum&lt;/span&gt; &lt;span class=&#34;nc&#34;&gt;OpCode&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;// ..snip..
+&lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;sd&#34;&gt;/// Access a variable in the current function&amp;#39;s scope.
+&lt;/span&gt;&lt;span class=&#34;sd&#34;&gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;PushVariableFromCurrentScope&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;        &lt;/span&gt;&lt;span class=&#34;sd&#34;&gt;/// The stack slot to access. If we have 4 variables called `a`, `b`,
+&lt;/span&gt;&lt;span class=&#34;sd&#34;&gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;        &lt;/span&gt;&lt;span class=&#34;sd&#34;&gt;/// `c`, and `d`, we can access `a` with stack slot `0`, `b` with stack
+&lt;/span&gt;&lt;span class=&#34;sd&#34;&gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;        &lt;/span&gt;&lt;span class=&#34;sd&#34;&gt;/// slot `1`, etc. This is much faster than looking up by name.
+&lt;/span&gt;&lt;span class=&#34;sd&#34;&gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;        &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;stack_slot&lt;/span&gt;: &lt;span class=&#34;kt&#34;&gt;usize&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;},&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;sd&#34;&gt;/// Access a variable in the parent scope. Because this language is
+&lt;/span&gt;&lt;span class=&#34;sd&#34;&gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;sd&#34;&gt;/// dynamically-scoped we can&amp;#39;t apply the same optimisations as if we had
+&lt;/span&gt;&lt;span class=&#34;sd&#34;&gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;sd&#34;&gt;/// made it lexically scoped. As a result, we must look up the variable
+&lt;/span&gt;&lt;span class=&#34;sd&#34;&gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;sd&#34;&gt;/// by name each time.
+&lt;/span&gt;&lt;span class=&#34;sd&#34;&gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;PushVariableFromSurroundingScope&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;        &lt;/span&gt;&lt;span class=&#34;sd&#34;&gt;/// The name of the variable. This would be `&amp;amp;str` but I&amp;#39;ve chosen
+&lt;/span&gt;&lt;span class=&#34;sd&#34;&gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;        &lt;/span&gt;&lt;span class=&#34;sd&#34;&gt;/// `String` here to illustrate my point.
+&lt;/span&gt;&lt;span class=&#34;sd&#34;&gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;        &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;variable_name&lt;/span&gt;: &lt;span class=&#34;nb&#34;&gt;String&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;// ..snip..
+&lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Then you can convert function calls to jumps (first-class functions would get converted to passing function pointers) and the entire &lt;code&gt;eval&lt;/code&gt; function becomes one loop. Much faster than recursive calls. Probably you won&amp;rsquo;t finish this task by the end of the session but hey, writing compilers is fun.&lt;/p&gt;
+&lt;div class=&#34;footnotes&#34;&gt;
+
+&lt;hr /&gt;
+
+&lt;ol&gt;
+&lt;li id=&#34;fn:often-said&#34;&gt;By me. So far I haven&amp;rsquo;t got it to catch on.
+ &lt;a class=&#34;footnote-return&#34; href=&#34;#fnref:often-said&#34;&gt;&lt;sup&gt;[return]&lt;/sup&gt;&lt;/a&gt;&lt;/li&gt;
+&lt;li id=&#34;fn:rawtable&#34;&gt;Actually &lt;code&gt;HashMap&lt;/code&gt; is a wrapper around &lt;code&gt;RawTable&lt;/code&gt; and so you&amp;rsquo;ll see &lt;code&gt;RawTable&lt;/code&gt; in the callee map, &lt;code&gt;HashMap&lt;/code&gt; has been totally inlined at this point and so doesn&amp;rsquo;t appear in the stack trace. If you see a &lt;code&gt;std&lt;/code&gt; item that you don&amp;rsquo;t recognise then try looking it up in Rust&amp;rsquo;s &lt;a href=&#34;https://doc.rust-lang.org/1.9.0/std/&#34;&gt;stdlib documentation&lt;/a&gt;. Unfortunately, that doesn&amp;rsquo;t help here (&lt;code&gt;RawTable&lt;/code&gt; is private) but it will help for many other types. For example, the &amp;ldquo;raw&amp;rdquo; inner type for &lt;code&gt;Vec&lt;/code&gt; &lt;a href=&#34;https://doc.rust-lang.org/1.9.0/alloc/raw_vec/struct.RawVec.html&#34;&gt;is public and listed in the stdlib docs&lt;/a&gt;.
+ &lt;a class=&#34;footnote-return&#34; href=&#34;#fnref:rawtable&#34;&gt;&lt;sup&gt;[return]&lt;/sup&gt;&lt;/a&gt;&lt;/li&gt;
+&lt;li id=&#34;fn:flapjacks&#34;&gt;This example works with American or British flapjacks but just to make sure we&amp;rsquo;ve all equally confused, let&amp;rsquo;s say that it&amp;rsquo;s a new kind of flapjack that combines the benefits of both British and American kinds.
+ &lt;a class=&#34;footnote-return&#34; href=&#34;#fnref:flapjacks&#34;&gt;&lt;sup&gt;[return]&lt;/sup&gt;&lt;/a&gt;&lt;/li&gt;
+&lt;li id=&#34;fn:hashmap&#34;&gt;The real libstd &lt;code&gt;HashMap&lt;/code&gt; is &lt;em&gt;much&lt;/em&gt; more complicated than this, using a cool algorithm known as &amp;ldquo;Robin Hood hashing&amp;rdquo; - because it steals from the &amp;ldquo;rich&amp;rdquo; (the full buckets) and gives to the &amp;ldquo;poor&amp;rdquo; (the less-full buckets). There&amp;rsquo;s a really good explanation of this algorithm on the always-fantastic &lt;a href=&#34;https://accidentallyquadratic.tumblr.com/post/153545455987/rust-hash-iteration-reinsertion&#34;&gt;Accidentally Quadratic blog&lt;/a&gt;. For the purposes of this explanation though, this simplistic implementation is good enough.
+ &lt;a class=&#34;footnote-return&#34; href=&#34;#fnref:hashmap&#34;&gt;&lt;sup&gt;[return]&lt;/sup&gt;&lt;/a&gt;&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/div&gt;
+</description>
+    </item>
     
     <item>
       <title>Improving SmallVec&#39;s speed by 60% and why that shouldn&#39;t matter to you</title>
