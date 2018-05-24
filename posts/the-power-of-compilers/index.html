@@ -21,6 +21,7 @@
     
     <meta name="article:tag" content="">
     <link rel="stylesheet" type="text/css" href="http://troubles.md/css/style.css">
+    <link rel="stylesheet" type="text/css" href="http://troubles.md/css/syntax.css">
     <script async>
         window.onload = function() {
             var possibilities = [
@@ -74,686 +75,686 @@
 <p>I work at Parity Technologies, who maintains the <a href="https://github.com/paritytech/parity">Parity Ethereum client</a>. In this client we have a need for performant 256-bit arithmetic, which we have to emulate in software since no modern hardware supports it natively.</p>
 
 <p>For a long time we&rsquo;ve maintained parallel implementations of arithmetic, one in Rust for stable builds and one in inline assembly (which is automatically used when you compile with the nightly compiler). We do this because we store these 256-bit numbers as arrays of 64-bit numbers and there is no way to multiply two 64-bit numbers to get a more-than-64-bit result in Rust (since Rust&rsquo;s integer types only go up to <code>u64</code>). This is despite the fact that x86_64 (our main target platform) natively supports 128-bit results of calculations with 64-bit numbers. So, we resort to splitting the 64-bit numbers into two 32-bit numbers (because we <em>can</em> multiply two 32-bit numbers to get a 64-bit result).</p>
-<div class="highlight"><pre style="background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-rust" data-lang="rust"><span style="color:#728e00">impl</span> <span style="color:#434f54">U256</span> {
-  <span style="color:#728e00">fn</span> <span style="color:#d35400">full_mul</span>(<span style="color:#434f54">self</span>, <span style="color:#434f54">other</span>: <span style="color:#434f54">Self</span>) -&gt; <span style="color:#434f54">U512</span> {
-    <span style="color:#728e00">let</span> <span style="color:#434f54">U256</span>(<span style="color:#728e00">ref</span> <span style="color:#434f54">me</span>) <span style="color:#728e00">=</span> <span style="color:#434f54">self</span>;
-    <span style="color:#728e00">let</span> <span style="color:#434f54">U256</span>(<span style="color:#728e00">ref</span> <span style="color:#434f54">you</span>) <span style="color:#728e00">=</span> <span style="color:#434f54">other</span>;
-    <span style="color:#728e00">let</span> <span style="color:#728e00">mut</span> <span style="color:#434f54">ret</span> <span style="color:#728e00">=</span> [<span style="color:#8a7b52">0</span><span style="color:#728e00">u64</span>; <span style="color:#434f54">U512_SIZE</span>];
-
-
-    <span style="color:#728e00">for</span> <span style="color:#434f54">i</span> <span style="color:#728e00">in</span> <span style="color:#8a7b52">0</span>..<span style="color:#434f54">U256_SIZE</span> {
-      <span style="color:#728e00">let</span> <span style="color:#728e00">mut</span> <span style="color:#434f54">carry</span> <span style="color:#728e00">=</span> <span style="color:#8a7b52">0</span><span style="color:#728e00">u64</span>;
-      <span style="color:#95a5a6">// `split` splits a 64-bit number into upper and lower halves
-</span><span style="color:#95a5a6"></span>      <span style="color:#728e00">let</span> (<span style="color:#434f54">b_u</span>, <span style="color:#434f54">b_l</span>) <span style="color:#728e00">=</span> <span style="color:#434f54">split</span>(<span style="color:#434f54">you</span>[<span style="color:#434f54">i</span>]);
-
-      <span style="color:#728e00">for</span> <span style="color:#434f54">j</span> <span style="color:#728e00">in</span> <span style="color:#8a7b52">0</span>..<span style="color:#434f54">U256_SIZE</span> {
-        <span style="color:#95a5a6">// This process is so slow that it&#39;s faster to check for 0 and skip
-</span><span style="color:#95a5a6"></span>        <span style="color:#95a5a6">// it if possible.
-</span><span style="color:#95a5a6"></span>        <span style="color:#728e00">if</span> <span style="color:#434f54">me</span>[<span style="color:#434f54">j</span>] <span style="color:#728e00">!=</span> <span style="color:#8a7b52">0</span> <span style="color:#728e00">||</span> <span style="color:#434f54">carry</span> <span style="color:#728e00">!=</span> <span style="color:#8a7b52">0</span> {
-          <span style="color:#728e00">let</span> <span style="color:#434f54">a</span> <span style="color:#728e00">=</span> <span style="color:#434f54">split</span>(<span style="color:#434f54">me</span>[<span style="color:#434f54">j</span>]);
-
-          <span style="color:#95a5a6">// `mul_u32` multiplies a 64-bit number that&#39;s been split into
-</span><span style="color:#95a5a6"></span>          <span style="color:#95a5a6">// an `(upper, lower)` pair by a 32-bit number to get a 96-bit
-</span><span style="color:#95a5a6"></span>          <span style="color:#95a5a6">// result. Yes, 96-bit (it returns a `(u32, u64)` pair).
-</span><span style="color:#95a5a6"></span>          <span style="color:#728e00">let</span> (<span style="color:#434f54">c_l</span>, <span style="color:#434f54">overflow_l</span>) <span style="color:#728e00">=</span> <span style="color:#434f54">mul_u32</span>(<span style="color:#434f54">a</span>, <span style="color:#434f54">b_l</span>, <span style="color:#434f54">ret</span>[<span style="color:#434f54">i</span> <span style="color:#728e00">+</span> <span style="color:#434f54">j</span>]);
-
-          <span style="color:#95a5a6">// Since we have to multiply by a 64-bit number, we have to do
-</span><span style="color:#95a5a6"></span>          <span style="color:#95a5a6">// this twice.
-</span><span style="color:#95a5a6"></span>          <span style="color:#728e00">let</span> (<span style="color:#434f54">c_u</span>, <span style="color:#434f54">overflow_u</span>) <span style="color:#728e00">=</span> <span style="color:#434f54">mul_u32</span>(<span style="color:#434f54">a</span>, <span style="color:#434f54">b_u</span>, <span style="color:#434f54">c_l</span> <span style="color:#728e00">&gt;&gt;</span> <span style="color:#8a7b52">32</span>);
-          <span style="color:#434f54">ret</span>[<span style="color:#434f54">i</span> <span style="color:#728e00">+</span> <span style="color:#434f54">j</span>] <span style="color:#728e00">=</span> (<span style="color:#434f54">c_l</span> <span style="color:#728e00">&amp;</span> <span style="color:#8a7b52">0xffffffff</span>) <span style="color:#728e00">+</span> (<span style="color:#434f54">c_u</span> <span style="color:#728e00">&lt;&lt;</span> <span style="color:#8a7b52">32</span>);
-
-          <span style="color:#95a5a6">// Then we have to do this complex logic to set the result. Gross.
-</span><span style="color:#95a5a6"></span>          <span style="color:#728e00">let</span> <span style="color:#434f54">res</span> <span style="color:#728e00">=</span> (<span style="color:#434f54">c_u</span> <span style="color:#728e00">&gt;&gt;</span> <span style="color:#8a7b52">32</span>) <span style="color:#728e00">+</span> (<span style="color:#434f54">overflow_u</span> <span style="color:#728e00">&lt;&lt;</span> <span style="color:#8a7b52">32</span>);
-          <span style="color:#728e00">let</span> (<span style="color:#434f54">res</span>, <span style="color:#434f54">o1</span>) <span style="color:#728e00">=</span> <span style="color:#434f54">res</span>.<span style="color:#434f54">overflowing_add</span>(<span style="color:#434f54">overflow_l</span> <span style="color:#728e00">+</span> <span style="color:#434f54">carry</span>);
-          <span style="color:#728e00">let</span> (<span style="color:#434f54">res</span>, <span style="color:#434f54">o2</span>) <span style="color:#728e00">=</span> <span style="color:#434f54">res</span>.<span style="color:#434f54">overflowing_add</span>(<span style="color:#434f54">ret</span>[<span style="color:#434f54">i</span> <span style="color:#728e00">+</span> <span style="color:#434f54">j</span> <span style="color:#728e00">+</span> <span style="color:#8a7b52">1</span>]);
-          <span style="color:#434f54">ret</span>[<span style="color:#434f54">i</span> <span style="color:#728e00">+</span> <span style="color:#434f54">j</span> <span style="color:#728e00">+</span> <span style="color:#8a7b52">1</span>] <span style="color:#728e00">=</span> <span style="color:#434f54">res</span>;
-
-          <span style="color:#434f54">carry</span> <span style="color:#728e00">=</span> (<span style="color:#434f54">o1</span> <span style="color:#728e00">|</span> <span style="color:#434f54">o2</span>) <span style="color:#728e00">as</span> <span style="color:#00979d">u64</span>;
-        }
-      }
-    }
-
-    <span style="color:#434f54">U512</span>(<span style="color:#434f54">ret</span>)
-  }
-}</code></pre></div>
+<div class="highlight"><pre class="chroma"><code class="language-rust" data-lang="rust"><span class="k">impl</span><span class="w"> </span><span class="n">U256</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span><span class="w">  </span><span class="k">fn</span> <span class="nf">full_mul</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span><span class="w"> </span><span class="n">other</span>: <span class="nc">Self</span><span class="p">)</span><span class="w"> </span>-&gt; <span class="nc">U512</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">U256</span><span class="p">(</span><span class="k">ref</span><span class="w"> </span><span class="n">me</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="bp">self</span><span class="p">;</span><span class="w">
+</span><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">U256</span><span class="p">(</span><span class="k">ref</span><span class="w"> </span><span class="n">you</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">other</span><span class="p">;</span><span class="w">
+</span><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="k">mut</span><span class="w"> </span><span class="n">ret</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="mi">0</span><span class="k">u64</span><span class="p">;</span><span class="w"> </span><span class="n">U512_SIZE</span><span class="p">];</span><span class="w">
+</span><span class="w">
+</span><span class="w">
+</span><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="mi">0</span><span class="p">..</span><span class="n">U256_SIZE</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span><span class="w">      </span><span class="kd">let</span><span class="w"> </span><span class="k">mut</span><span class="w"> </span><span class="n">carry</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="k">u64</span><span class="p">;</span><span class="w">
+</span><span class="w">      </span><span class="c1">// `split` splits a 64-bit number into upper and lower halves
+</span><span class="c1"></span><span class="w">      </span><span class="kd">let</span><span class="w"> </span><span class="p">(</span><span class="n">b_u</span><span class="p">,</span><span class="w"> </span><span class="n">b_l</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">split</span><span class="p">(</span><span class="n">you</span><span class="p">[</span><span class="n">i</span><span class="p">]);</span><span class="w">
+</span><span class="w">
+</span><span class="w">      </span><span class="k">for</span><span class="w"> </span><span class="n">j</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="mi">0</span><span class="p">..</span><span class="n">U256_SIZE</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span><span class="w">        </span><span class="c1">// This process is so slow that it&#39;s faster to check for 0 and skip
+</span><span class="c1"></span><span class="w">        </span><span class="c1">// it if possible.
+</span><span class="c1"></span><span class="w">        </span><span class="k">if</span><span class="w"> </span><span class="n">me</span><span class="p">[</span><span class="n">j</span><span class="p">]</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="n">carry</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span><span class="w">          </span><span class="kd">let</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">split</span><span class="p">(</span><span class="n">me</span><span class="p">[</span><span class="n">j</span><span class="p">]);</span><span class="w">
+</span><span class="w">
+</span><span class="w">          </span><span class="c1">// `mul_u32` multiplies a 64-bit number that&#39;s been split into
+</span><span class="c1"></span><span class="w">          </span><span class="c1">// an `(upper, lower)` pair by a 32-bit number to get a 96-bit
+</span><span class="c1"></span><span class="w">          </span><span class="c1">// result. Yes, 96-bit (it returns a `(u32, u64)` pair).
+</span><span class="c1"></span><span class="w">          </span><span class="kd">let</span><span class="w"> </span><span class="p">(</span><span class="n">c_l</span><span class="p">,</span><span class="w"> </span><span class="n">overflow_l</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">mul_u32</span><span class="p">(</span><span class="n">a</span><span class="p">,</span><span class="w"> </span><span class="n">b_l</span><span class="p">,</span><span class="w"> </span><span class="n">ret</span><span class="p">[</span><span class="n">i</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">j</span><span class="p">]);</span><span class="w">
+</span><span class="w">
+</span><span class="w">          </span><span class="c1">// Since we have to multiply by a 64-bit number, we have to do
+</span><span class="c1"></span><span class="w">          </span><span class="c1">// this twice.
+</span><span class="c1"></span><span class="w">          </span><span class="kd">let</span><span class="w"> </span><span class="p">(</span><span class="n">c_u</span><span class="p">,</span><span class="w"> </span><span class="n">overflow_u</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">mul_u32</span><span class="p">(</span><span class="n">a</span><span class="p">,</span><span class="w"> </span><span class="n">b_u</span><span class="p">,</span><span class="w"> </span><span class="n">c_l</span><span class="w"> </span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="mi">32</span><span class="p">);</span><span class="w">
+</span><span class="w">          </span><span class="n">ret</span><span class="p">[</span><span class="n">i</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">j</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">c_l</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="mh">0xffffffff</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="p">(</span><span class="n">c_u</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="mi">32</span><span class="p">);</span><span class="w">
+</span><span class="w">
+</span><span class="w">          </span><span class="c1">// Then we have to do this complex logic to set the result. Gross.
+</span><span class="c1"></span><span class="w">          </span><span class="kd">let</span><span class="w"> </span><span class="n">res</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">c_u</span><span class="w"> </span><span class="o">&gt;&gt;</span><span class="w"> </span><span class="mi">32</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="p">(</span><span class="n">overflow_u</span><span class="w"> </span><span class="o">&lt;&lt;</span><span class="w"> </span><span class="mi">32</span><span class="p">);</span><span class="w">
+</span><span class="w">          </span><span class="kd">let</span><span class="w"> </span><span class="p">(</span><span class="n">res</span><span class="p">,</span><span class="w"> </span><span class="n">o1</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">res</span><span class="p">.</span><span class="n">overflowing_add</span><span class="p">(</span><span class="n">overflow_l</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">carry</span><span class="p">);</span><span class="w">
+</span><span class="w">          </span><span class="kd">let</span><span class="w"> </span><span class="p">(</span><span class="n">res</span><span class="p">,</span><span class="w"> </span><span class="n">o2</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">res</span><span class="p">.</span><span class="n">overflowing_add</span><span class="p">(</span><span class="n">ret</span><span class="p">[</span><span class="n">i</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">j</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">]);</span><span class="w">
+</span><span class="w">          </span><span class="n">ret</span><span class="p">[</span><span class="n">i</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">j</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">res</span><span class="p">;</span><span class="w">
+</span><span class="w">
+</span><span class="w">          </span><span class="n">carry</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">o1</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">o2</span><span class="p">)</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="kt">u64</span><span class="p">;</span><span class="w">
+</span><span class="w">        </span><span class="p">}</span><span class="w">
+</span><span class="w">      </span><span class="p">}</span><span class="w">
+</span><span class="w">    </span><span class="p">}</span><span class="w">
+</span><span class="w">
+</span><span class="w">    </span><span class="n">U512</span><span class="p">(</span><span class="n">ret</span><span class="p">)</span><span class="w">
+</span><span class="w">  </span><span class="p">}</span><span class="w">
+</span><span class="w"></span><span class="p">}</span></code></pre></div>
 <p>You don&rsquo;t even have to understand all of the code to see how non-optimal this is. Inspecting the output of the compiler shows that the generated assembly is extremely suboptimal. It does much more work than necessary essentially just to work around limitations in the Rust language. So we wrote an inline assembly version. The important thing about using inline assembly here is that x86_64 natively supports multiplying two 64-bit values into a 128-bit result. When Rust does <code>a * b</code> when <code>a</code> and <code>b</code> are both <code>u64</code> the CPU actually multiplies them to create a 128-bit result and then Rust just throws away the upper 64 bits. We want the upper 64 in this case though, and the only way to access it efficiently is by using inline assembly.</p>
 
 <p>As you can imagine, our assembly implementation was much faster:</p>
-<div class="highlight"><pre style="background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-text" data-lang="text"> name            u64.bench ns/iter  inline_asm.bench ns/iter  diff ns/iter   diff %  speedup 
+<div class="highlight"><pre class="chroma"><code class="language-text" data-lang="text"> name            u64.bench ns/iter  inline_asm.bench ns/iter  diff ns/iter   diff %  speedup 
  u256_full_mul   243,159            197,396                        -45,763  -18.82%   x 1.23 
  u256_mul        268,750            95,843                        -172,907  -64.34%   x 2.80 
  u256_mul_small  1,608              789                               -819  -50.93%   x 2.04 </code></pre></div>
 <p><code>u256_full_mul</code> tests the function above, <code>u256_mul</code> multiplies two 256-bit numbers to get a 256-bit result (in Rust, we just create a 512-bit result and then throw away the top half but in assembly we have a seperate implementation), and <code>u256_mul_small</code> multiplies two small 256-bit numbers. As you can see, the assembly implementation is up to 65% faster. This is way, way better. Unfortunately, it only works on nightly, and even then only on x86_64. The truth is that it was a lot of effort and a number of thrown-away implementations to even get the Rust code to &ldquo;only&rdquo; half the speed of the assembly, too. There was simply no good way to give the compiler the information necessary.</p>
 
 <p>All that changed with <a href="https://blog.rust-lang.org/2018/05/10/Rust-1.26.html">Rust 1.26</a>. Now we can do <code>a as u128 * b as u128</code> and the compiler will use x86_64&rsquo;s native u64-to-u128 multiplication (even though you cast both numbers to <code>u128</code> it knows that they&rsquo;re &ldquo;really&rdquo; just <code>u64</code>, you just want a <code>u128</code> result). That means our code now looks like this:</p>
-<div class="highlight"><pre style="background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-rust" data-lang="rust"><span style="color:#728e00">impl</span> <span style="color:#434f54">U256</span> {
-  <span style="color:#728e00">fn</span> <span style="color:#d35400">full_mul</span>(<span style="color:#434f54">self</span>, <span style="color:#434f54">other</span>: <span style="color:#434f54">Self</span>) -&gt; <span style="color:#434f54">U512</span> {
-    <span style="color:#728e00">let</span> <span style="color:#434f54">U256</span>(<span style="color:#728e00">ref</span> <span style="color:#434f54">me</span>) <span style="color:#728e00">=</span> <span style="color:#434f54">self</span>;
-    <span style="color:#728e00">let</span> <span style="color:#434f54">U256</span>(<span style="color:#728e00">ref</span> <span style="color:#434f54">you</span>) <span style="color:#728e00">=</span> <span style="color:#434f54">other</span>;
-    <span style="color:#728e00">let</span> <span style="color:#728e00">mut</span> <span style="color:#434f54">ret</span> <span style="color:#728e00">=</span> [<span style="color:#8a7b52">0</span><span style="color:#728e00">u64</span>; <span style="color:#434f54">U512_SIZE</span>];
-
-    <span style="color:#728e00">for</span> <span style="color:#434f54">i</span> <span style="color:#728e00">in</span> <span style="color:#8a7b52">0</span>..<span style="color:#434f54">U256_SIZE</span> {
-      <span style="color:#728e00">let</span> <span style="color:#728e00">mut</span> <span style="color:#434f54">carry</span> <span style="color:#728e00">=</span> <span style="color:#8a7b52">0</span><span style="color:#728e00">u64</span>;
-      <span style="color:#728e00">let</span> <span style="color:#434f54">b</span> <span style="color:#728e00">=</span> <span style="color:#434f54">you</span>[<span style="color:#434f54">i</span>];
-
-      <span style="color:#728e00">for</span> <span style="color:#434f54">j</span> <span style="color:#728e00">in</span> <span style="color:#8a7b52">0</span>..<span style="color:#434f54">U256_SIZE</span> {
-        <span style="color:#728e00">let</span> <span style="color:#434f54">a</span> <span style="color:#728e00">=</span> <span style="color:#434f54">me</span>[<span style="color:#434f54">j</span>];
-
-        <span style="color:#95a5a6">// This compiles down to just use x86&#39;s native 128-bit arithmetic
-</span><span style="color:#95a5a6"></span>        <span style="color:#728e00">let</span> (<span style="color:#434f54">hi</span>, <span style="color:#434f54">low</span>) <span style="color:#728e00">=</span> <span style="color:#434f54">split_u128</span>(<span style="color:#434f54">a</span> <span style="color:#728e00">as</span> <span style="color:#434f54">u128</span> <span style="color:#728e00">*</span> <span style="color:#434f54">b</span> <span style="color:#728e00">as</span> <span style="color:#434f54">u128</span>);
-
-        <span style="color:#728e00">let</span> <span style="color:#434f54">overflow</span> <span style="color:#728e00">=</span> {
-          <span style="color:#728e00">let</span> <span style="color:#434f54">existing_low</span> <span style="color:#728e00">=</span> <span style="color:#728e00">&amp;</span><span style="color:#728e00">mut</span> <span style="color:#434f54">ret</span>[<span style="color:#434f54">i</span> <span style="color:#728e00">+</span> <span style="color:#434f54">j</span>];
-          <span style="color:#728e00">let</span> (<span style="color:#434f54">low</span>, <span style="color:#434f54">o</span>) <span style="color:#728e00">=</span> <span style="color:#434f54">low</span>.<span style="color:#434f54">overflowing_add</span>(<span style="color:#728e00">*</span><span style="color:#434f54">existing_low</span>);
-          <span style="color:#728e00">*</span><span style="color:#434f54">existing_low</span> <span style="color:#728e00">=</span> <span style="color:#434f54">low</span>;
-          <span style="color:#434f54">o</span>
-        };
-
-        <span style="color:#434f54">carry</span> <span style="color:#728e00">=</span> {
-          <span style="color:#728e00">let</span> <span style="color:#434f54">existing_hi</span> <span style="color:#728e00">=</span> <span style="color:#728e00">&amp;</span><span style="color:#728e00">mut</span> <span style="color:#434f54">ret</span>[<span style="color:#434f54">i</span> <span style="color:#728e00">+</span> <span style="color:#434f54">j</span> <span style="color:#728e00">+</span> <span style="color:#8a7b52">1</span>];
-          <span style="color:#728e00">let</span> <span style="color:#434f54">hi</span> <span style="color:#728e00">=</span> <span style="color:#434f54">hi</span> <span style="color:#728e00">+</span> <span style="color:#434f54">overflow</span> <span style="color:#728e00">as</span> <span style="color:#00979d">u64</span>;
-          <span style="color:#728e00">let</span> (<span style="color:#434f54">hi</span>, <span style="color:#434f54">o0</span>) <span style="color:#728e00">=</span> <span style="color:#434f54">hi</span>.<span style="color:#434f54">overflowing_add</span>(<span style="color:#434f54">carry</span>);
-          <span style="color:#728e00">let</span> (<span style="color:#434f54">hi</span>, <span style="color:#434f54">o1</span>) <span style="color:#728e00">=</span> <span style="color:#434f54">hi</span>.<span style="color:#434f54">overflowing_add</span>(<span style="color:#728e00">*</span><span style="color:#434f54">existing_hi</span>);
-          <span style="color:#728e00">*</span><span style="color:#434f54">existing_hi</span> <span style="color:#728e00">=</span> <span style="color:#434f54">hi</span>;
-
-          (<span style="color:#434f54">o0</span> <span style="color:#728e00">|</span> <span style="color:#434f54">o1</span>) <span style="color:#728e00">as</span> <span style="color:#00979d">u64</span>
-        }
-      }
-    }
-
-    <span style="color:#434f54">U512</span>(<span style="color:#434f54">ret</span>)
-  }
-}</code></pre></div>
+<div class="highlight"><pre class="chroma"><code class="language-rust" data-lang="rust"><span class="k">impl</span><span class="w"> </span><span class="n">U256</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span><span class="w">  </span><span class="k">fn</span> <span class="nf">full_mul</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span><span class="w"> </span><span class="n">other</span>: <span class="nc">Self</span><span class="p">)</span><span class="w"> </span>-&gt; <span class="nc">U512</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">U256</span><span class="p">(</span><span class="k">ref</span><span class="w"> </span><span class="n">me</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="bp">self</span><span class="p">;</span><span class="w">
+</span><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">U256</span><span class="p">(</span><span class="k">ref</span><span class="w"> </span><span class="n">you</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">other</span><span class="p">;</span><span class="w">
+</span><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="k">mut</span><span class="w"> </span><span class="n">ret</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="mi">0</span><span class="k">u64</span><span class="p">;</span><span class="w"> </span><span class="n">U512_SIZE</span><span class="p">];</span><span class="w">
+</span><span class="w">
+</span><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="n">i</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="mi">0</span><span class="p">..</span><span class="n">U256_SIZE</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span><span class="w">      </span><span class="kd">let</span><span class="w"> </span><span class="k">mut</span><span class="w"> </span><span class="n">carry</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="k">u64</span><span class="p">;</span><span class="w">
+</span><span class="w">      </span><span class="kd">let</span><span class="w"> </span><span class="n">b</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">you</span><span class="p">[</span><span class="n">i</span><span class="p">];</span><span class="w">
+</span><span class="w">
+</span><span class="w">      </span><span class="k">for</span><span class="w"> </span><span class="n">j</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="mi">0</span><span class="p">..</span><span class="n">U256_SIZE</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span><span class="w">        </span><span class="kd">let</span><span class="w"> </span><span class="n">a</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">me</span><span class="p">[</span><span class="n">j</span><span class="p">];</span><span class="w">
+</span><span class="w">
+</span><span class="w">        </span><span class="c1">// This compiles down to just use x86&#39;s native 128-bit arithmetic
+</span><span class="c1"></span><span class="w">        </span><span class="kd">let</span><span class="w"> </span><span class="p">(</span><span class="n">hi</span><span class="p">,</span><span class="w"> </span><span class="n">low</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">split_u128</span><span class="p">(</span><span class="n">a</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">u128</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">b</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">u128</span><span class="p">);</span><span class="w">
+</span><span class="w">
+</span><span class="w">        </span><span class="kd">let</span><span class="w"> </span><span class="n">overflow</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span><span class="w">          </span><span class="kd">let</span><span class="w"> </span><span class="n">existing_low</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">&amp;</span><span class="k">mut</span><span class="w"> </span><span class="n">ret</span><span class="p">[</span><span class="n">i</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">j</span><span class="p">];</span><span class="w">
+</span><span class="w">          </span><span class="kd">let</span><span class="w"> </span><span class="p">(</span><span class="n">low</span><span class="p">,</span><span class="w"> </span><span class="n">o</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">low</span><span class="p">.</span><span class="n">overflowing_add</span><span class="p">(</span><span class="o">*</span><span class="n">existing_low</span><span class="p">);</span><span class="w">
+</span><span class="w">          </span><span class="o">*</span><span class="n">existing_low</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">low</span><span class="p">;</span><span class="w">
+</span><span class="w">          </span><span class="n">o</span><span class="w">
+</span><span class="w">        </span><span class="p">};</span><span class="w">
+</span><span class="w">
+</span><span class="w">        </span><span class="n">carry</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span><span class="w">          </span><span class="kd">let</span><span class="w"> </span><span class="n">existing_hi</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">&amp;</span><span class="k">mut</span><span class="w"> </span><span class="n">ret</span><span class="p">[</span><span class="n">i</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">j</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">];</span><span class="w">
+</span><span class="w">          </span><span class="kd">let</span><span class="w"> </span><span class="n">hi</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">hi</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">overflow</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="kt">u64</span><span class="p">;</span><span class="w">
+</span><span class="w">          </span><span class="kd">let</span><span class="w"> </span><span class="p">(</span><span class="n">hi</span><span class="p">,</span><span class="w"> </span><span class="n">o0</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">hi</span><span class="p">.</span><span class="n">overflowing_add</span><span class="p">(</span><span class="n">carry</span><span class="p">);</span><span class="w">
+</span><span class="w">          </span><span class="kd">let</span><span class="w"> </span><span class="p">(</span><span class="n">hi</span><span class="p">,</span><span class="w"> </span><span class="n">o1</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">hi</span><span class="p">.</span><span class="n">overflowing_add</span><span class="p">(</span><span class="o">*</span><span class="n">existing_hi</span><span class="p">);</span><span class="w">
+</span><span class="w">          </span><span class="o">*</span><span class="n">existing_hi</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">hi</span><span class="p">;</span><span class="w">
+</span><span class="w">
+</span><span class="w">          </span><span class="p">(</span><span class="n">o0</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="n">o1</span><span class="p">)</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="kt">u64</span><span class="w">
+</span><span class="w">        </span><span class="p">}</span><span class="w">
+</span><span class="w">      </span><span class="p">}</span><span class="w">
+</span><span class="w">    </span><span class="p">}</span><span class="w">
+</span><span class="w">
+</span><span class="w">    </span><span class="n">U512</span><span class="p">(</span><span class="n">ret</span><span class="p">)</span><span class="w">
+</span><span class="w">  </span><span class="p">}</span><span class="w">
+</span><span class="w"></span><span class="p">}</span></code></pre></div>
 <p>Although it&rsquo;s almost certainly not as fast as using the LLVM-native <code>i256</code> type, the speed is much, much better. Here it is compared to the original Rust implementation:</p>
-<div class="highlight"><pre style="background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-text" data-lang="text"> name            u64.bench ns/iter  u128.bench ns/iter  diff ns/iter   diff %  speedup 
+<div class="highlight"><pre class="chroma"><code class="language-text" data-lang="text"> name            u64.bench ns/iter  u128.bench ns/iter  diff ns/iter   diff %  speedup 
  u256_full_mul   243,159            73,416                  -169,743  -69.81%   x 3.31 
  u256_mul        268,750            85,797                  -182,953  -68.08%   x 3.13 
  u256_mul_small  1,608              558                       -1,050  -65.30%   x 2.88 </code></pre></div>
 <p>Which is great, we now get a speed boost on stable. Since we only compile the binaries for the Parity client on stable the only people who could use the assembly before were those who compiled from source, so this is an improvement for a lot of users. But wait, there&rsquo;s more! The new compiled code actually manages to beat the assembly implementation by a significant margin, even beating the assembly on the benchmark that multiplies two 256-bit numbers to get a 256-bit result. This is despite the fact that the Rust code still produces a 512-bit result first and then discards the upper half, where the assembly implementation does not:</p>
-<div class="highlight"><pre style="background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-text" data-lang="text"> name            inline_asm.bench ns/iter  u128.bench ns/iter  diff ns/iter   diff %  speedup 
+<div class="highlight"><pre class="chroma"><code class="language-text" data-lang="text"> name            inline_asm.bench ns/iter  u128.bench ns/iter  diff ns/iter   diff %  speedup 
  u256_full_mul   197,396                   73,416                  -123,980  -62.81%   x 2.69 
  u256_mul        95,843                    85,797                   -10,046  -10.48%   x 1.12 
  u256_mul_small  789                       558                         -231  -29.28%   x 1.41 </code></pre></div>
 <p>For the full multiplication that&rsquo;s an absolutely massive improvement, especially since the original code used highly-optimised assembly incantations from our resident cycle wizard. Here&rsquo;s where the faint of heart might want to step out for a moment, because I&rsquo;m about to dive into the generated assembly.</p>
 
 <p>Here&rsquo;s the hand-written assembly. I&rsquo;ve presented it without comment because I want to comment the assembly that is actually emitted by the compiler (since, as you&rsquo;ll see, the <code>asm!</code> macro hides more than you&rsquo;d expect):</p>
-<div class="highlight"><pre style="background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-rust" data-lang="rust"><span style="color:#728e00">impl</span> <span style="color:#434f54">U256</span> {
-  <span style="color:#7f8c8d">/// Multiplies two 256-bit integers to produce full 512-bit integer
-</span><span style="color:#7f8c8d"></span>  <span style="color:#7f8c8d">/// No overflow possible
-</span><span style="color:#7f8c8d"></span>  <span style="color:#728e00">pub</span> <span style="color:#728e00">fn</span> <span style="color:#d35400">full_mul</span>(<span style="color:#434f54">self</span>, <span style="color:#434f54">other</span>: <span style="color:#434f54">U256</span>) -&gt; <span style="color:#434f54">U512</span> {
-    <span style="color:#728e00">let</span> <span style="color:#434f54">self_t</span>: <span style="color:#00979d">&amp;</span>[<span style="color:#00979d">u64</span>; <span style="color:#8a7b52">4</span>] <span style="color:#728e00">=</span> <span style="color:#728e00">&amp;</span><span style="color:#434f54">self</span>.<span style="color:#8a7b52">0</span>;
-    <span style="color:#728e00">let</span> <span style="color:#434f54">other_t</span>: <span style="color:#00979d">&amp;</span>[<span style="color:#00979d">u64</span>; <span style="color:#8a7b52">4</span>] <span style="color:#728e00">=</span> <span style="color:#728e00">&amp;</span><span style="color:#434f54">other</span>.<span style="color:#8a7b52">0</span>;
-    <span style="color:#728e00">let</span> <span style="color:#728e00">mut</span> <span style="color:#434f54">result</span>: [<span style="color:#00979d">u64</span>; <span style="color:#8a7b52">8</span>] <span style="color:#728e00">=</span> <span style="color:#728e00">unsafe</span> { ::<span style="color:#434f54">core</span>::<span style="color:#434f54">mem</span>::<span style="color:#434f54">uninitialized</span>() };
-    <span style="color:#728e00">unsafe</span> {
-      <span style="color:#434f54">asm</span><span style="color:#728e00">!</span>(<span style="color:#7f8c8d">&#34;
-</span><span style="color:#7f8c8d">        mov $8, %rax
-</span><span style="color:#7f8c8d">        mulq $12
-</span><span style="color:#7f8c8d">        mov %rax, $0
-</span><span style="color:#7f8c8d">        mov %rdx, $1
-</span><span style="color:#7f8c8d">        mov $8, %rax
-</span><span style="color:#7f8c8d">        mulq $13
-</span><span style="color:#7f8c8d">        add %rax, $1
-</span><span style="color:#7f8c8d">        adc $$0, %rdx
-</span><span style="color:#7f8c8d">        mov %rdx, $2
-</span><span style="color:#7f8c8d">        mov $8, %rax
-</span><span style="color:#7f8c8d">        mulq $14
-</span><span style="color:#7f8c8d">        add %rax, $2
-</span><span style="color:#7f8c8d">        adc $$0, %rdx
-</span><span style="color:#7f8c8d">        mov %rdx, $3
-</span><span style="color:#7f8c8d">        mov $8, %rax
-</span><span style="color:#7f8c8d">        mulq $15
-</span><span style="color:#7f8c8d">        add %rax, $3
-</span><span style="color:#7f8c8d">        adc $$0, %rdx
-</span><span style="color:#7f8c8d">        mov %rdx, $4
-</span><span style="color:#7f8c8d">        mov $9, %rax
-</span><span style="color:#7f8c8d">        mulq $12
-</span><span style="color:#7f8c8d">        add %rax, $1
-</span><span style="color:#7f8c8d">        adc %rdx, $2
-</span><span style="color:#7f8c8d">        adc $$0, $3
-</span><span style="color:#7f8c8d">        adc $$0, $4
-</span><span style="color:#7f8c8d">        xor $5, $5
-</span><span style="color:#7f8c8d">        adc $$0, $5
-</span><span style="color:#7f8c8d">        xor $6, $6
-</span><span style="color:#7f8c8d">        adc $$0, $6
-</span><span style="color:#7f8c8d">        xor $7, $7
-</span><span style="color:#7f8c8d">        adc $$0, $7
-</span><span style="color:#7f8c8d">        mov $9, %rax
-</span><span style="color:#7f8c8d">        mulq $13
-</span><span style="color:#7f8c8d">        add %rax, $2
-</span><span style="color:#7f8c8d">        adc %rdx, $3
-</span><span style="color:#7f8c8d">        adc $$0, $4
-</span><span style="color:#7f8c8d">        adc $$0, $5
-</span><span style="color:#7f8c8d">        adc $$0, $6
-</span><span style="color:#7f8c8d">        adc $$0, $7
-</span><span style="color:#7f8c8d">        mov $9, %rax
-</span><span style="color:#7f8c8d">        mulq $14
-</span><span style="color:#7f8c8d">        add %rax, $3
-</span><span style="color:#7f8c8d">        adc %rdx, $4
-</span><span style="color:#7f8c8d">        adc $$0, $5
-</span><span style="color:#7f8c8d">        adc $$0, $6
-</span><span style="color:#7f8c8d">        adc $$0, $7
-</span><span style="color:#7f8c8d">        mov $9, %rax
-</span><span style="color:#7f8c8d">        mulq $15
-</span><span style="color:#7f8c8d">        add %rax, $4
-</span><span style="color:#7f8c8d">        adc %rdx, $5
-</span><span style="color:#7f8c8d">        adc $$0, $6
-</span><span style="color:#7f8c8d">        adc $$0, $7
-</span><span style="color:#7f8c8d">        mov $10, %rax
-</span><span style="color:#7f8c8d">        mulq $12
-</span><span style="color:#7f8c8d">        add %rax, $2
-</span><span style="color:#7f8c8d">        adc %rdx, $3
-</span><span style="color:#7f8c8d">        adc $$0, $4
-</span><span style="color:#7f8c8d">        adc $$0, $5
-</span><span style="color:#7f8c8d">        adc $$0, $6
-</span><span style="color:#7f8c8d">        adc $$0, $7
-</span><span style="color:#7f8c8d">        mov $10, %rax
-</span><span style="color:#7f8c8d">        mulq $13
-</span><span style="color:#7f8c8d">        add %rax, $3
-</span><span style="color:#7f8c8d">        adc %rdx, $4
-</span><span style="color:#7f8c8d">        adc $$0, $5
-</span><span style="color:#7f8c8d">        adc $$0, $6
-</span><span style="color:#7f8c8d">        adc $$0, $7
-</span><span style="color:#7f8c8d">        mov $10, %rax
-</span><span style="color:#7f8c8d">        mulq $14
-</span><span style="color:#7f8c8d">        add %rax, $4
-</span><span style="color:#7f8c8d">        adc %rdx, $5
-</span><span style="color:#7f8c8d">        adc $$0, $6
-</span><span style="color:#7f8c8d">        adc $$0, $7
-</span><span style="color:#7f8c8d">        mov $10, %rax
-</span><span style="color:#7f8c8d">        mulq $15
-</span><span style="color:#7f8c8d">        add %rax, $5
-</span><span style="color:#7f8c8d">        adc %rdx, $6
-</span><span style="color:#7f8c8d">        adc $$0, $7
-</span><span style="color:#7f8c8d">        mov $11, %rax
-</span><span style="color:#7f8c8d">        mulq $12
-</span><span style="color:#7f8c8d">        add %rax, $3
-</span><span style="color:#7f8c8d">        adc %rdx, $4
-</span><span style="color:#7f8c8d">        adc $$0, $5
-</span><span style="color:#7f8c8d">        adc $$0, $6
-</span><span style="color:#7f8c8d">        adc $$0, $7
-</span><span style="color:#7f8c8d">        mov $11, %rax
-</span><span style="color:#7f8c8d">        mulq $13
-</span><span style="color:#7f8c8d">        add %rax, $4
-</span><span style="color:#7f8c8d">        adc %rdx, $5
-</span><span style="color:#7f8c8d">        adc $$0, $6
-</span><span style="color:#7f8c8d">        adc $$0, $7
-</span><span style="color:#7f8c8d">        mov $11, %rax
-</span><span style="color:#7f8c8d">        mulq $14
-</span><span style="color:#7f8c8d">        add %rax, $5
-</span><span style="color:#7f8c8d">        adc %rdx, $6
-</span><span style="color:#7f8c8d">        adc $$0, $7
-</span><span style="color:#7f8c8d">        mov $11, %rax
-</span><span style="color:#7f8c8d">        mulq $15
-</span><span style="color:#7f8c8d">        add %rax, $6
-</span><span style="color:#7f8c8d">        adc %rdx, $7
-</span><span style="color:#7f8c8d">        &#34;</span>
-      : <span style="color:#95a5a6">/* $0 */</span> <span style="color:#7f8c8d">&#34;={r8}&#34;</span>(<span style="color:#434f54">result</span>[<span style="color:#8a7b52">0</span>]),  <span style="color:#95a5a6">/* $1 */</span> <span style="color:#7f8c8d">&#34;={r9}&#34;</span>(<span style="color:#434f54">result</span>[<span style="color:#8a7b52">1</span>]),  <span style="color:#95a5a6">/* $2 */</span> <span style="color:#7f8c8d">&#34;={r10}&#34;</span>(<span style="color:#434f54">result</span>[<span style="color:#8a7b52">2</span>]),
-        <span style="color:#95a5a6">/* $3 */</span> <span style="color:#7f8c8d">&#34;={r11}&#34;</span>(<span style="color:#434f54">result</span>[<span style="color:#8a7b52">3</span>]), <span style="color:#95a5a6">/* $4 */</span> <span style="color:#7f8c8d">&#34;={r12}&#34;</span>(<span style="color:#434f54">result</span>[<span style="color:#8a7b52">4</span>]), <span style="color:#95a5a6">/* $5 */</span> <span style="color:#7f8c8d">&#34;={r13}&#34;</span>(<span style="color:#434f54">result</span>[<span style="color:#8a7b52">5</span>]),
-        <span style="color:#95a5a6">/* $6 */</span> <span style="color:#7f8c8d">&#34;={r14}&#34;</span>(<span style="color:#434f54">result</span>[<span style="color:#8a7b52">6</span>]), <span style="color:#95a5a6">/* $7 */</span> <span style="color:#7f8c8d">&#34;={r15}&#34;</span>(<span style="color:#434f54">result</span>[<span style="color:#8a7b52">7</span>])
-
-      : <span style="color:#95a5a6">/* $8 */</span> <span style="color:#7f8c8d">&#34;m&#34;</span>(<span style="color:#434f54">self_t</span>[<span style="color:#8a7b52">0</span>]),   <span style="color:#95a5a6">/* $9 */</span> <span style="color:#7f8c8d">&#34;m&#34;</span>(<span style="color:#434f54">self_t</span>[<span style="color:#8a7b52">1</span>]),   <span style="color:#95a5a6">/* $10 */</span>  <span style="color:#7f8c8d">&#34;m&#34;</span>(<span style="color:#434f54">self_t</span>[<span style="color:#8a7b52">2</span>]),
-        <span style="color:#95a5a6">/* $11 */</span> <span style="color:#7f8c8d">&#34;m&#34;</span>(<span style="color:#434f54">self_t</span>[<span style="color:#8a7b52">3</span>]),  <span style="color:#95a5a6">/* $12 */</span> <span style="color:#7f8c8d">&#34;m&#34;</span>(<span style="color:#434f54">other_t</span>[<span style="color:#8a7b52">0</span>]), <span style="color:#95a5a6">/* $13 */</span> <span style="color:#7f8c8d">&#34;m&#34;</span>(<span style="color:#434f54">other_t</span>[<span style="color:#8a7b52">1</span>]),
-        <span style="color:#95a5a6">/* $14 */</span> <span style="color:#7f8c8d">&#34;m&#34;</span>(<span style="color:#434f54">other_t</span>[<span style="color:#8a7b52">2</span>]), <span style="color:#95a5a6">/* $15 */</span> <span style="color:#7f8c8d">&#34;m&#34;</span>(<span style="color:#434f54">other_t</span>[<span style="color:#8a7b52">3</span>])
-      : <span style="color:#7f8c8d">&#34;rax&#34;</span>, <span style="color:#7f8c8d">&#34;rdx&#34;</span>
-      :
-      );
-    }
-
-    <span style="color:#434f54">U512</span>(<span style="color:#434f54">result</span>)
-  }
-}</code></pre></div>
+<div class="highlight"><pre class="chroma"><code class="language-rust" data-lang="rust"><span class="k">impl</span><span class="w"> </span><span class="n">U256</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span><span class="w">  </span><span class="sd">/// Multiplies two 256-bit integers to produce full 512-bit integer
+</span><span class="sd"></span><span class="w">  </span><span class="sd">/// No overflow possible
+</span><span class="sd"></span><span class="w">  </span><span class="k">pub</span><span class="w"> </span><span class="k">fn</span> <span class="nf">full_mul</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span><span class="w"> </span><span class="n">other</span>: <span class="nc">U256</span><span class="p">)</span><span class="w"> </span>-&gt; <span class="nc">U512</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">self_t</span>: <span class="kp">&amp;</span><span class="p">[</span><span class="kt">u64</span><span class="p">;</span><span class="w"> </span><span class="mi">4</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">&amp;</span><span class="bp">self</span><span class="p">.</span><span class="mi">0</span><span class="p">;</span><span class="w">
+</span><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">other_t</span>: <span class="kp">&amp;</span><span class="p">[</span><span class="kt">u64</span><span class="p">;</span><span class="w"> </span><span class="mi">4</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">&amp;</span><span class="n">other</span><span class="p">.</span><span class="mi">0</span><span class="p">;</span><span class="w">
+</span><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="k">mut</span><span class="w"> </span><span class="n">result</span>: <span class="p">[</span><span class="kt">u64</span><span class="p">;</span><span class="w"> </span><span class="mi">8</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">unsafe</span><span class="w"> </span><span class="p">{</span><span class="w"> </span>::<span class="n">core</span>::<span class="n">mem</span>::<span class="n">uninitialized</span><span class="p">()</span><span class="w"> </span><span class="p">};</span><span class="w">
+</span><span class="w">    </span><span class="k">unsafe</span><span class="w"> </span><span class="p">{</span><span class="w">
+</span><span class="w">      </span><span class="n">asm</span><span class="o">!</span><span class="p">(</span><span class="s">&#34;
+</span><span class="s">        mov $8, %rax
+</span><span class="s">        mulq $12
+</span><span class="s">        mov %rax, $0
+</span><span class="s">        mov %rdx, $1
+</span><span class="s">        mov $8, %rax
+</span><span class="s">        mulq $13
+</span><span class="s">        add %rax, $1
+</span><span class="s">        adc $$0, %rdx
+</span><span class="s">        mov %rdx, $2
+</span><span class="s">        mov $8, %rax
+</span><span class="s">        mulq $14
+</span><span class="s">        add %rax, $2
+</span><span class="s">        adc $$0, %rdx
+</span><span class="s">        mov %rdx, $3
+</span><span class="s">        mov $8, %rax
+</span><span class="s">        mulq $15
+</span><span class="s">        add %rax, $3
+</span><span class="s">        adc $$0, %rdx
+</span><span class="s">        mov %rdx, $4
+</span><span class="s">        mov $9, %rax
+</span><span class="s">        mulq $12
+</span><span class="s">        add %rax, $1
+</span><span class="s">        adc %rdx, $2
+</span><span class="s">        adc $$0, $3
+</span><span class="s">        adc $$0, $4
+</span><span class="s">        xor $5, $5
+</span><span class="s">        adc $$0, $5
+</span><span class="s">        xor $6, $6
+</span><span class="s">        adc $$0, $6
+</span><span class="s">        xor $7, $7
+</span><span class="s">        adc $$0, $7
+</span><span class="s">        mov $9, %rax
+</span><span class="s">        mulq $13
+</span><span class="s">        add %rax, $2
+</span><span class="s">        adc %rdx, $3
+</span><span class="s">        adc $$0, $4
+</span><span class="s">        adc $$0, $5
+</span><span class="s">        adc $$0, $6
+</span><span class="s">        adc $$0, $7
+</span><span class="s">        mov $9, %rax
+</span><span class="s">        mulq $14
+</span><span class="s">        add %rax, $3
+</span><span class="s">        adc %rdx, $4
+</span><span class="s">        adc $$0, $5
+</span><span class="s">        adc $$0, $6
+</span><span class="s">        adc $$0, $7
+</span><span class="s">        mov $9, %rax
+</span><span class="s">        mulq $15
+</span><span class="s">        add %rax, $4
+</span><span class="s">        adc %rdx, $5
+</span><span class="s">        adc $$0, $6
+</span><span class="s">        adc $$0, $7
+</span><span class="s">        mov $10, %rax
+</span><span class="s">        mulq $12
+</span><span class="s">        add %rax, $2
+</span><span class="s">        adc %rdx, $3
+</span><span class="s">        adc $$0, $4
+</span><span class="s">        adc $$0, $5
+</span><span class="s">        adc $$0, $6
+</span><span class="s">        adc $$0, $7
+</span><span class="s">        mov $10, %rax
+</span><span class="s">        mulq $13
+</span><span class="s">        add %rax, $3
+</span><span class="s">        adc %rdx, $4
+</span><span class="s">        adc $$0, $5
+</span><span class="s">        adc $$0, $6
+</span><span class="s">        adc $$0, $7
+</span><span class="s">        mov $10, %rax
+</span><span class="s">        mulq $14
+</span><span class="s">        add %rax, $4
+</span><span class="s">        adc %rdx, $5
+</span><span class="s">        adc $$0, $6
+</span><span class="s">        adc $$0, $7
+</span><span class="s">        mov $10, %rax
+</span><span class="s">        mulq $15
+</span><span class="s">        add %rax, $5
+</span><span class="s">        adc %rdx, $6
+</span><span class="s">        adc $$0, $7
+</span><span class="s">        mov $11, %rax
+</span><span class="s">        mulq $12
+</span><span class="s">        add %rax, $3
+</span><span class="s">        adc %rdx, $4
+</span><span class="s">        adc $$0, $5
+</span><span class="s">        adc $$0, $6
+</span><span class="s">        adc $$0, $7
+</span><span class="s">        mov $11, %rax
+</span><span class="s">        mulq $13
+</span><span class="s">        add %rax, $4
+</span><span class="s">        adc %rdx, $5
+</span><span class="s">        adc $$0, $6
+</span><span class="s">        adc $$0, $7
+</span><span class="s">        mov $11, %rax
+</span><span class="s">        mulq $14
+</span><span class="s">        add %rax, $5
+</span><span class="s">        adc %rdx, $6
+</span><span class="s">        adc $$0, $7
+</span><span class="s">        mov $11, %rax
+</span><span class="s">        mulq $15
+</span><span class="s">        add %rax, $6
+</span><span class="s">        adc %rdx, $7
+</span><span class="s">        &#34;</span><span class="w">
+</span><span class="w">      </span>: <span class="cm">/* $0 */</span><span class="w"> </span><span class="s">&#34;={r8}&#34;</span><span class="p">(</span><span class="n">result</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span><span class="w">  </span><span class="cm">/* $1 */</span><span class="w"> </span><span class="s">&#34;={r9}&#34;</span><span class="p">(</span><span class="n">result</span><span class="p">[</span><span class="mi">1</span><span class="p">]),</span><span class="w">  </span><span class="cm">/* $2 */</span><span class="w"> </span><span class="s">&#34;={r10}&#34;</span><span class="p">(</span><span class="n">result</span><span class="p">[</span><span class="mi">2</span><span class="p">]),</span><span class="w">
+</span><span class="w">        </span><span class="cm">/* $3 */</span><span class="w"> </span><span class="s">&#34;={r11}&#34;</span><span class="p">(</span><span class="n">result</span><span class="p">[</span><span class="mi">3</span><span class="p">]),</span><span class="w"> </span><span class="cm">/* $4 */</span><span class="w"> </span><span class="s">&#34;={r12}&#34;</span><span class="p">(</span><span class="n">result</span><span class="p">[</span><span class="mi">4</span><span class="p">]),</span><span class="w"> </span><span class="cm">/* $5 */</span><span class="w"> </span><span class="s">&#34;={r13}&#34;</span><span class="p">(</span><span class="n">result</span><span class="p">[</span><span class="mi">5</span><span class="p">]),</span><span class="w">
+</span><span class="w">        </span><span class="cm">/* $6 */</span><span class="w"> </span><span class="s">&#34;={r14}&#34;</span><span class="p">(</span><span class="n">result</span><span class="p">[</span><span class="mi">6</span><span class="p">]),</span><span class="w"> </span><span class="cm">/* $7 */</span><span class="w"> </span><span class="s">&#34;={r15}&#34;</span><span class="p">(</span><span class="n">result</span><span class="p">[</span><span class="mi">7</span><span class="p">])</span><span class="w">
+</span><span class="w">
+</span><span class="w">      </span>: <span class="cm">/* $8 */</span><span class="w"> </span><span class="s">&#34;m&#34;</span><span class="p">(</span><span class="n">self_t</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span><span class="w">   </span><span class="cm">/* $9 */</span><span class="w"> </span><span class="s">&#34;m&#34;</span><span class="p">(</span><span class="n">self_t</span><span class="p">[</span><span class="mi">1</span><span class="p">]),</span><span class="w">   </span><span class="cm">/* $10 */</span><span class="w">  </span><span class="s">&#34;m&#34;</span><span class="p">(</span><span class="n">self_t</span><span class="p">[</span><span class="mi">2</span><span class="p">]),</span><span class="w">
+</span><span class="w">        </span><span class="cm">/* $11 */</span><span class="w"> </span><span class="s">&#34;m&#34;</span><span class="p">(</span><span class="n">self_t</span><span class="p">[</span><span class="mi">3</span><span class="p">]),</span><span class="w">  </span><span class="cm">/* $12 */</span><span class="w"> </span><span class="s">&#34;m&#34;</span><span class="p">(</span><span class="n">other_t</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span><span class="w"> </span><span class="cm">/* $13 */</span><span class="w"> </span><span class="s">&#34;m&#34;</span><span class="p">(</span><span class="n">other_t</span><span class="p">[</span><span class="mi">1</span><span class="p">]),</span><span class="w">
+</span><span class="w">        </span><span class="cm">/* $14 */</span><span class="w"> </span><span class="s">&#34;m&#34;</span><span class="p">(</span><span class="n">other_t</span><span class="p">[</span><span class="mi">2</span><span class="p">]),</span><span class="w"> </span><span class="cm">/* $15 */</span><span class="w"> </span><span class="s">&#34;m&#34;</span><span class="p">(</span><span class="n">other_t</span><span class="p">[</span><span class="mi">3</span><span class="p">])</span><span class="w">
+</span><span class="w">      </span>: <span class="s">&#34;rax&#34;</span><span class="p">,</span><span class="w"> </span><span class="s">&#34;rdx&#34;</span><span class="w">
+</span><span class="w">      </span>:
+      <span class="p">);</span><span class="w">
+</span><span class="w">    </span><span class="p">}</span><span class="w">
+</span><span class="w">
+</span><span class="w">    </span><span class="n">U512</span><span class="p">(</span><span class="n">result</span><span class="p">)</span><span class="w">
+</span><span class="w">  </span><span class="p">}</span><span class="w">
+</span><span class="w"></span><span class="p">}</span></code></pre></div>
 <p>And here&rsquo;s what that generates. I&rsquo;ve heavily commented it so you can understand what&rsquo;s going on even if you&rsquo;ve never touched assembly in your life, but you will need to know basic low-level details like the difference between memory and registers. If you want to get a primer on the structure of a CPU, the <a href="https://en.wikipedia.org/wiki/Central_processing_unit#Structure_and_implementation">Wikipedia article on structure and implementation of CPUs</a> is a good place to start:</p>
-<div class="highlight"><pre style="background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-gas" data-lang="gas"><span style="color:#434f54">bigint:</span><span style="color:#a61717">:</span><span style="color:#434f54">U256:</span><span style="color:#a61717">:</span><span style="color:#434f54">full_mul:</span>
-    <span style="color:#95a5a6">;; Function prelude - this is generated by Rust
-</span><span style="color:#95a5a6"></span>    <span style="color:#d35400">pushq</span>  <span style="color:#434f54">%r15</span>
-    <span style="color:#d35400">pushq</span>  <span style="color:#434f54">%r14</span>
-    <span style="color:#d35400">pushq</span>  <span style="color:#434f54">%r13</span>
-    <span style="color:#d35400">pushq</span>  <span style="color:#434f54">%r12</span>
-    <span style="color:#d35400">subq</span>   <span style="color:#434f54">$0x40</span>, <span style="color:#434f54">%rsp</span>
+<div class="highlight"><pre class="chroma"><code class="language-gas" data-lang="gas"><span class="nl">bigint:</span><span class="err">:</span><span class="nl">U256:</span><span class="err">:</span><span class="nl">full_mul:</span>
+    <span class="c">;; Function prelude - this is generated by Rust
+</span><span class="c"></span>    <span class="nf">pushq</span>  <span class="nv">%r15</span>
+    <span class="nf">pushq</span>  <span class="nv">%r14</span>
+    <span class="nf">pushq</span>  <span class="nv">%r13</span>
+    <span class="nf">pushq</span>  <span class="nv">%r12</span>
+    <span class="nf">subq</span>   <span class="no">$0x40</span><span class="p">,</span> <span class="nv">%rsp</span>
 
-    <span style="color:#95a5a6">;; Load the input arrays into registers...
-</span><span style="color:#95a5a6"></span>    <span style="color:#d35400">movq</span>   <span style="color:#8a7b52">0x68</span>(<span style="color:#434f54">%rsp</span>), <span style="color:#434f54">%rax</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#8a7b52">0x70</span>(<span style="color:#434f54">%rsp</span>), <span style="color:#434f54">%rcx</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#8a7b52">0x78</span>(<span style="color:#434f54">%rsp</span>), <span style="color:#434f54">%rdx</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#8a7b52">0x80</span>(<span style="color:#434f54">%rsp</span>), <span style="color:#434f54">%rsi</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#8a7b52">0x88</span>(<span style="color:#434f54">%rsp</span>), <span style="color:#434f54">%r8</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#8a7b52">0x90</span>(<span style="color:#434f54">%rsp</span>), <span style="color:#434f54">%r9</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#8a7b52">0x98</span>(<span style="color:#434f54">%rsp</span>), <span style="color:#434f54">%r10</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#8a7b52">0xa0</span>(<span style="color:#434f54">%rsp</span>), <span style="color:#434f54">%r11</span>
+    <span class="c">;; Load the input arrays into registers...
+</span><span class="c"></span>    <span class="nf">movq</span>   <span class="mi">0x68</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">),</span> <span class="nv">%rax</span>
+    <span class="nf">movq</span>   <span class="mi">0x70</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">),</span> <span class="nv">%rcx</span>
+    <span class="nf">movq</span>   <span class="mi">0x78</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">),</span> <span class="nv">%rdx</span>
+    <span class="nf">movq</span>   <span class="mi">0x80</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">),</span> <span class="nv">%rsi</span>
+    <span class="nf">movq</span>   <span class="mi">0x88</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">),</span> <span class="nv">%r8</span>
+    <span class="nf">movq</span>   <span class="mi">0x90</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">),</span> <span class="nv">%r9</span>
+    <span class="nf">movq</span>   <span class="mi">0x98</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">),</span> <span class="nv">%r10</span>
+    <span class="nf">movq</span>   <span class="mi">0xa0</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">),</span> <span class="nv">%r11</span>
 
-    <span style="color:#95a5a6">;; ...and then immediately back into memory
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; This is done by the Rust compiler. There is a way to avoid
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; this happening but I&#39;ll get to that later
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; These four are the first input array
-</span><span style="color:#95a5a6"></span>    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rax</span>, <span style="color:#8a7b52">0x38</span>(<span style="color:#434f54">%rsp</span>)
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rcx</span>, <span style="color:#8a7b52">0x30</span>(<span style="color:#434f54">%rsp</span>)
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rdx</span>, <span style="color:#8a7b52">0x28</span>(<span style="color:#434f54">%rsp</span>)
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rsi</span>, <span style="color:#8a7b52">0x20</span>(<span style="color:#434f54">%rsp</span>)
-    <span style="color:#95a5a6">;; These four are the output array, which is initialised to be
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; the same as the second input array.
-</span><span style="color:#95a5a6"></span>    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%r8</span>,  <span style="color:#8a7b52">0x18</span>(<span style="color:#434f54">%rsp</span>)
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%r9</span>,  <span style="color:#8a7b52">0x10</span>(<span style="color:#434f54">%rsp</span>)
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%r10</span>, <span style="color:#8a7b52">0x8</span>(<span style="color:#434f54">%rsp</span>)
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%r11</span>, (<span style="color:#434f54">%rsp</span>)
+    <span class="c">;; ...and then immediately back into memory
+</span><span class="c"></span>    <span class="c">;; This is done by the Rust compiler. There is a way to avoid
+</span><span class="c"></span>    <span class="c">;; this happening but I&#39;ll get to that later
+</span><span class="c"></span>    <span class="c">;; These four are the first input array
+</span><span class="c"></span>    <span class="nf">movq</span>   <span class="nv">%rax</span><span class="p">,</span> <span class="mi">0x38</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">)</span>
+    <span class="nf">movq</span>   <span class="nv">%rcx</span><span class="p">,</span> <span class="mi">0x30</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">)</span>
+    <span class="nf">movq</span>   <span class="nv">%rdx</span><span class="p">,</span> <span class="mi">0x28</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">)</span>
+    <span class="nf">movq</span>   <span class="nv">%rsi</span><span class="p">,</span> <span class="mi">0x20</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">)</span>
+    <span class="c">;; These four are the output array, which is initialised to be
+</span><span class="c"></span>    <span class="c">;; the same as the second input array.
+</span><span class="c"></span>    <span class="nf">movq</span>   <span class="nv">%r8</span><span class="p">,</span>  <span class="mi">0x18</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">)</span>
+    <span class="nf">movq</span>   <span class="nv">%r9</span><span class="p">,</span>  <span class="mi">0x10</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">)</span>
+    <span class="nf">movq</span>   <span class="nv">%r10</span><span class="p">,</span> <span class="mi">0x8</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">)</span>
+    <span class="nf">movq</span>   <span class="nv">%r11</span><span class="p">,</span> <span class="p">(</span><span class="nv">%rsp</span><span class="p">)</span>
 
-    <span style="color:#95a5a6">;; This is the main loop, you&#39;ll see the same code repeated many
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; times since it&#39;s been unrolled so I won&#39;t go over it every time.
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; This takes the form of a loop that looks like:
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;;
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; for i in 0..U256_SIZE {
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;;     for j in 0..U256_SIZE {
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;;         /* Loop body */
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;;     }
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; }
-</span><span style="color:#95a5a6"></span>
-    <span style="color:#95a5a6">;; Load the `0`th element of the input array into the &#34;%rax&#34;
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; register so we can operate on it. The first element is actually
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; already in `%rax` at this point but it gets loaded again anyway.
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; This is because the `asm!` macro is hiding a lot of details, which
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; I&#39;ll get to later.
-</span><span style="color:#95a5a6"></span>    <span style="color:#d35400">movq</span>   <span style="color:#8a7b52">0x38</span>(<span style="color:#434f54">%rsp</span>), <span style="color:#434f54">%rax</span>
-    <span style="color:#95a5a6">;; Multiply it with the `0`th element of the output array This operates
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; on memory rather than a register, and so is significantly slower than
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; if the same operation had been done on a register. Again, I&#39;ll get to
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; that soon.
-</span><span style="color:#95a5a6"></span>    <span style="color:#d35400">mulq</span>   <span style="color:#8a7b52">0x18</span>(<span style="color:#434f54">%rsp</span>)
-    <span style="color:#95a5a6">;; `mulq` multiplies two 64-bit numbers and stores the low and high
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; 64 bits of the result in `%rax` and `%rdx`, respectively. We move
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; the low bits into `%r8` (the lowest 64 bits of the 512-bit result)
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; and the high bits into `%r9` (the second-lowest 64 bits of the
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; result).
-</span><span style="color:#95a5a6"></span>    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rax</span>, <span style="color:#434f54">%r8</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rdx</span>, <span style="color:#434f54">%r9</span>
+    <span class="c">;; This is the main loop, you&#39;ll see the same code repeated many
+</span><span class="c"></span>    <span class="c">;; times since it&#39;s been unrolled so I won&#39;t go over it every time.
+</span><span class="c"></span>    <span class="c">;; This takes the form of a loop that looks like:
+</span><span class="c"></span>    <span class="c">;;
+</span><span class="c"></span>    <span class="c">;; for i in 0..U256_SIZE {
+</span><span class="c"></span>    <span class="c">;;     for j in 0..U256_SIZE {
+</span><span class="c"></span>    <span class="c">;;         /* Loop body */
+</span><span class="c"></span>    <span class="c">;;     }
+</span><span class="c"></span>    <span class="c">;; }
+</span><span class="c"></span>
+    <span class="c">;; Load the `0`th element of the input array into the &#34;%rax&#34;
+</span><span class="c"></span>    <span class="c">;; register so we can operate on it. The first element is actually
+</span><span class="c"></span>    <span class="c">;; already in `%rax` at this point but it gets loaded again anyway.
+</span><span class="c"></span>    <span class="c">;; This is because the `asm!` macro is hiding a lot of details, which
+</span><span class="c"></span>    <span class="c">;; I&#39;ll get to later.
+</span><span class="c"></span>    <span class="nf">movq</span>   <span class="mi">0x38</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">),</span> <span class="nv">%rax</span>
+    <span class="c">;; Multiply it with the `0`th element of the output array This operates
+</span><span class="c"></span>    <span class="c">;; on memory rather than a register, and so is significantly slower than
+</span><span class="c"></span>    <span class="c">;; if the same operation had been done on a register. Again, I&#39;ll get to
+</span><span class="c"></span>    <span class="c">;; that soon.
+</span><span class="c"></span>    <span class="nf">mulq</span>   <span class="mi">0x18</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">)</span>
+    <span class="c">;; `mulq` multiplies two 64-bit numbers and stores the low and high
+</span><span class="c"></span>    <span class="c">;; 64 bits of the result in `%rax` and `%rdx`, respectively. We move
+</span><span class="c"></span>    <span class="c">;; the low bits into `%r8` (the lowest 64 bits of the 512-bit result)
+</span><span class="c"></span>    <span class="c">;; and the high bits into `%r9` (the second-lowest 64 bits of the
+</span><span class="c"></span>    <span class="c">;; result).
+</span><span class="c"></span>    <span class="nf">movq</span>   <span class="nv">%rax</span><span class="p">,</span> <span class="nv">%r8</span>
+    <span class="nf">movq</span>   <span class="nv">%rdx</span><span class="p">,</span> <span class="nv">%r9</span>
 
-    <span style="color:#95a5a6">;; We do the same for `i = 0, j = 1`
-</span><span style="color:#95a5a6"></span>    <span style="color:#d35400">movq</span>   <span style="color:#8a7b52">0x38</span>(<span style="color:#434f54">%rsp</span>), <span style="color:#434f54">%rax</span>
-    <span style="color:#d35400">mulq</span>   <span style="color:#8a7b52">0x10</span>(<span style="color:#434f54">%rsp</span>)
+    <span class="c">;; We do the same for `i = 0, j = 1`
+</span><span class="c"></span>    <span class="nf">movq</span>   <span class="mi">0x38</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">),</span> <span class="nv">%rax</span>
+    <span class="nf">mulq</span>   <span class="mi">0x10</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">)</span>
 
-    <span style="color:#95a5a6">;; Whereas above we moved the values into the output registers, this time
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; we have to add the results to the output.
-</span><span style="color:#95a5a6"></span>    <span style="color:#d35400">addq</span>   <span style="color:#434f54">%rax</span>, <span style="color:#434f54">%r9</span>
+    <span class="c">;; Whereas above we moved the values into the output registers, this time
+</span><span class="c"></span>    <span class="c">;; we have to add the results to the output.
+</span><span class="c"></span>    <span class="nf">addq</span>   <span class="nv">%rax</span><span class="p">,</span> <span class="nv">%r9</span>
 
-    <span style="color:#95a5a6">;; Here we add 0 because the CPU will use the &#34;carry bit&#34; (whether or not
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; the previous addition overflowed) as an additional input. This is
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; essentially the same as adding 1 to `rdx` if the previous addition
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; overflowed.
-</span><span style="color:#95a5a6"></span>    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">$0x0</span>, <span style="color:#434f54">%rdx</span>
+    <span class="c">;; Here we add 0 because the CPU will use the &#34;carry bit&#34; (whether or not
+</span><span class="c"></span>    <span class="c">;; the previous addition overflowed) as an additional input. This is
+</span><span class="c"></span>    <span class="c">;; essentially the same as adding 1 to `rdx` if the previous addition
+</span><span class="c"></span>    <span class="c">;; overflowed.
+</span><span class="c"></span>    <span class="nf">adcq</span>   <span class="no">$0x0</span><span class="p">,</span> <span class="nv">%rdx</span>
 
-    <span style="color:#95a5a6">;; Then we move the upper 64 bits of the multiplication (plus the carry bit
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; from the addition) into the third-lowest 64 bits of the output.
-</span><span style="color:#95a5a6"></span>    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rdx</span>, <span style="color:#434f54">%r10</span>
+    <span class="c">;; Then we move the upper 64 bits of the multiplication (plus the carry bit
+</span><span class="c"></span>    <span class="c">;; from the addition) into the third-lowest 64 bits of the output.
+</span><span class="c"></span>    <span class="nf">movq</span>   <span class="nv">%rdx</span><span class="p">,</span> <span class="nv">%r10</span>
 
-    <span style="color:#95a5a6">;; Then we continue for `j = 2` and `j = 3`
-</span><span style="color:#95a5a6"></span>    <span style="color:#d35400">movq</span>   <span style="color:#8a7b52">0x38</span>(<span style="color:#434f54">%rsp</span>), <span style="color:#434f54">%rax</span>
-    <span style="color:#d35400">mulq</span>   <span style="color:#8a7b52">0x8</span>(<span style="color:#434f54">%rsp</span>)
-    <span style="color:#d35400">addq</span>   <span style="color:#434f54">%rax</span>,       <span style="color:#434f54">%r10</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">$0x0</span>,       <span style="color:#434f54">%rdx</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rdx</span>,       <span style="color:#434f54">%r11</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#8a7b52">0x38</span>(<span style="color:#434f54">%rsp</span>), <span style="color:#434f54">%rax</span>
-    <span style="color:#d35400">mulq</span>   (<span style="color:#434f54">%rsp</span>)
-    <span style="color:#d35400">addq</span>   <span style="color:#434f54">%rax</span>,       <span style="color:#434f54">%r11</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">$0x0</span>,       <span style="color:#434f54">%rdx</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rdx</span>,       <span style="color:#434f54">%r12</span>
+    <span class="c">;; Then we continue for `j = 2` and `j = 3`
+</span><span class="c"></span>    <span class="nf">movq</span>   <span class="mi">0x38</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">),</span> <span class="nv">%rax</span>
+    <span class="nf">mulq</span>   <span class="mi">0x8</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">)</span>
+    <span class="nf">addq</span>   <span class="nv">%rax</span><span class="p">,</span>       <span class="nv">%r10</span>
+    <span class="nf">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>       <span class="nv">%rdx</span>
+    <span class="nf">movq</span>   <span class="nv">%rdx</span><span class="p">,</span>       <span class="nv">%r11</span>
+    <span class="nf">movq</span>   <span class="mi">0x38</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">),</span> <span class="nv">%rax</span>
+    <span class="nf">mulq</span>   <span class="p">(</span><span class="nv">%rsp</span><span class="p">)</span>
+    <span class="nf">addq</span>   <span class="nv">%rax</span><span class="p">,</span>       <span class="nv">%r11</span>
+    <span class="nf">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>       <span class="nv">%rdx</span>
+    <span class="nf">movq</span>   <span class="nv">%rdx</span><span class="p">,</span>       <span class="nv">%r12</span>
 
-    <span style="color:#95a5a6">;; Then we do the same for `i = 1`, `i = 2` and `i = 3`
-</span><span style="color:#95a5a6"></span>    <span style="color:#d35400">movq</span>   <span style="color:#8a7b52">0x30</span>(<span style="color:#434f54">%rsp</span>), <span style="color:#434f54">%rax</span>
-    <span style="color:#d35400">mulq</span>   <span style="color:#8a7b52">0x18</span>(<span style="color:#434f54">%rsp</span>)  
-    <span style="color:#434f54">addq</span>   <span style="color:#434f54">%rax</span>,       <span style="color:#434f54">%r9</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">%rdx</span>,       <span style="color:#434f54">%r10</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">$0x0</span>,       <span style="color:#434f54">%r11</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">$0x0</span>,       <span style="color:#434f54">%r12</span>
+    <span class="c">;; Then we do the same for `i = 1`, `i = 2` and `i = 3`
+</span><span class="c"></span>    <span class="nf">movq</span>   <span class="mi">0x30</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">),</span> <span class="nv">%rax</span>
+    <span class="nf">mulq</span>   <span class="mi">0x18</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">)</span>  
+    <span class="no">addq</span>   <span class="nv">%rax</span><span class="p">,</span>       <span class="nv">%r9</span>
+    <span class="nf">adcq</span>   <span class="nv">%rdx</span><span class="p">,</span>       <span class="nv">%r10</span>
+    <span class="nf">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>       <span class="nv">%r11</span>
+    <span class="nf">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>       <span class="nv">%r12</span>
 
-    <span style="color:#95a5a6">;; This `xor` just ensures that `%r13` is zeroed. Again, this is
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; non-optimal (we don&#39;t need to zero these registers at all) but
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; I&#39;ll get to that.
-</span><span style="color:#95a5a6"></span>    <span style="color:#d35400">xorq</span>   <span style="color:#434f54">%r13</span>,       <span style="color:#434f54">%r13</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">$0x0</span>,       <span style="color:#434f54">%r13</span>
-    <span style="color:#d35400">xorq</span>   <span style="color:#434f54">%r14</span>,       <span style="color:#434f54">%r14</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">$0x0</span>,       <span style="color:#434f54">%r14</span>
-    <span style="color:#d35400">xorq</span>   <span style="color:#434f54">%r15</span>,       <span style="color:#434f54">%r15</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">$0x0</span>,       <span style="color:#434f54">%r15</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#8a7b52">0x30</span>(<span style="color:#434f54">%rsp</span>), <span style="color:#434f54">%rax</span>
-    <span style="color:#d35400">mulq</span>   <span style="color:#8a7b52">0x10</span>(<span style="color:#434f54">%rsp</span>)  
-    <span style="color:#434f54">addq</span>   <span style="color:#434f54">%rax</span>,       <span style="color:#434f54">%r10</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">%rdx</span>,       <span style="color:#434f54">%r11</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">$0x0</span>,       <span style="color:#434f54">%r12</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">$0x0</span>,       <span style="color:#434f54">%r13</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">$0x0</span>,       <span style="color:#434f54">%r14</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">$0x0</span>,       <span style="color:#434f54">%r15</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#8a7b52">0x30</span>(<span style="color:#434f54">%rsp</span>), <span style="color:#434f54">%rax</span>
-    <span style="color:#d35400">mulq</span>   <span style="color:#8a7b52">0x8</span>(<span style="color:#434f54">%rsp</span>)   
-    <span style="color:#434f54">addq</span>   <span style="color:#434f54">%rax</span>,       <span style="color:#434f54">%r11</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">%rdx</span>,       <span style="color:#434f54">%r12</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">$0x0</span>,       <span style="color:#434f54">%r13</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">$0x0</span>,       <span style="color:#434f54">%r14</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">$0x0</span>,       <span style="color:#434f54">%r15</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#8a7b52">0x30</span>(<span style="color:#434f54">%rsp</span>), <span style="color:#434f54">%rax</span>
-    <span style="color:#d35400">mulq</span>   (<span style="color:#434f54">%rsp</span>)      
-    <span style="color:#434f54">addq</span>   <span style="color:#434f54">%rax</span>,       <span style="color:#434f54">%r12</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">%rdx</span>,       <span style="color:#434f54">%r13</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">$0x0</span>,       <span style="color:#434f54">%r14</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">$0x0</span>,       <span style="color:#434f54">%r15</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#8a7b52">0x28</span>(<span style="color:#434f54">%rsp</span>), <span style="color:#434f54">%rax</span>
-    <span style="color:#d35400">mulq</span>   <span style="color:#8a7b52">0x18</span>(<span style="color:#434f54">%rsp</span>)  
-    <span style="color:#434f54">addq</span>   <span style="color:#434f54">%rax</span>,       <span style="color:#434f54">%r10</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">%rdx</span>,       <span style="color:#434f54">%r11</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">$0x0</span>,       <span style="color:#434f54">%r12</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">$0x0</span>,       <span style="color:#434f54">%r13</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">$0x0</span>,       <span style="color:#434f54">%r14</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">$0x0</span>,       <span style="color:#434f54">%r15</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#8a7b52">0x28</span>(<span style="color:#434f54">%rsp</span>), <span style="color:#434f54">%rax</span>
-    <span style="color:#d35400">mulq</span>   <span style="color:#8a7b52">0x10</span>(<span style="color:#434f54">%rsp</span>)  
-    <span style="color:#434f54">addq</span>   <span style="color:#434f54">%rax</span>,       <span style="color:#434f54">%r11</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">%rdx</span>,       <span style="color:#434f54">%r12</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">$0x0</span>,       <span style="color:#434f54">%r13</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">$0x0</span>,       <span style="color:#434f54">%r14</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">$0x0</span>,       <span style="color:#434f54">%r15</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#8a7b52">0x28</span>(<span style="color:#434f54">%rsp</span>), <span style="color:#434f54">%rax</span>
-    <span style="color:#d35400">mulq</span>   <span style="color:#8a7b52">0x8</span>(<span style="color:#434f54">%rsp</span>)   
-    <span style="color:#434f54">addq</span>   <span style="color:#434f54">%rax</span>,       <span style="color:#434f54">%r12</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">%rdx</span>,       <span style="color:#434f54">%r13</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">$0x0</span>,       <span style="color:#434f54">%r14</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">$0x0</span>,       <span style="color:#434f54">%r15</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#8a7b52">0x28</span>(<span style="color:#434f54">%rsp</span>), <span style="color:#434f54">%rax</span>
-    <span style="color:#d35400">mulq</span>   (<span style="color:#434f54">%rsp</span>)      
-    <span style="color:#434f54">addq</span>   <span style="color:#434f54">%rax</span>,       <span style="color:#434f54">%r13</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">%rdx</span>,       <span style="color:#434f54">%r14</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">$0x0</span>,       <span style="color:#434f54">%r15</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#8a7b52">0x20</span>(<span style="color:#434f54">%rsp</span>), <span style="color:#434f54">%rax</span>
-    <span style="color:#d35400">mulq</span>   <span style="color:#8a7b52">0x18</span>(<span style="color:#434f54">%rsp</span>)  
-    <span style="color:#434f54">addq</span>   <span style="color:#434f54">%rax</span>,       <span style="color:#434f54">%r11</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">%rdx</span>,       <span style="color:#434f54">%r12</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">$0x0</span>,       <span style="color:#434f54">%r13</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">$0x0</span>,       <span style="color:#434f54">%r14</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">$0x0</span>,       <span style="color:#434f54">%r15</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#8a7b52">0x20</span>(<span style="color:#434f54">%rsp</span>), <span style="color:#434f54">%rax</span>
-    <span style="color:#d35400">mulq</span>   <span style="color:#8a7b52">0x10</span>(<span style="color:#434f54">%rsp</span>)  
-    <span style="color:#434f54">addq</span>   <span style="color:#434f54">%rax</span>,       <span style="color:#434f54">%r12</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">%rdx</span>,       <span style="color:#434f54">%r13</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">$0x0</span>,       <span style="color:#434f54">%r14</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">$0x0</span>,       <span style="color:#434f54">%r15</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#8a7b52">0x20</span>(<span style="color:#434f54">%rsp</span>), <span style="color:#434f54">%rax</span>
-    <span style="color:#d35400">mulq</span>   <span style="color:#8a7b52">0x8</span>(<span style="color:#434f54">%rsp</span>)   
-    <span style="color:#434f54">addq</span>   <span style="color:#434f54">%rax</span>,       <span style="color:#434f54">%r13</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">%rdx</span>,       <span style="color:#434f54">%r14</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">$0x0</span>,       <span style="color:#434f54">%r15</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#8a7b52">0x20</span>(<span style="color:#434f54">%rsp</span>), <span style="color:#434f54">%rax</span>
-    <span style="color:#d35400">mulq</span>   (<span style="color:#434f54">%rsp</span>)      
-    <span style="color:#434f54">addq</span>   <span style="color:#434f54">%rax</span>,       <span style="color:#434f54">%r14</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">%rdx</span>,       <span style="color:#434f54">%r15</span>
+    <span class="c">;; This `xor` just ensures that `%r13` is zeroed. Again, this is
+</span><span class="c"></span>    <span class="c">;; non-optimal (we don&#39;t need to zero these registers at all) but
+</span><span class="c"></span>    <span class="c">;; I&#39;ll get to that.
+</span><span class="c"></span>    <span class="nf">xorq</span>   <span class="nv">%r13</span><span class="p">,</span>       <span class="nv">%r13</span>
+    <span class="nf">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>       <span class="nv">%r13</span>
+    <span class="nf">xorq</span>   <span class="nv">%r14</span><span class="p">,</span>       <span class="nv">%r14</span>
+    <span class="nf">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>       <span class="nv">%r14</span>
+    <span class="nf">xorq</span>   <span class="nv">%r15</span><span class="p">,</span>       <span class="nv">%r15</span>
+    <span class="nf">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>       <span class="nv">%r15</span>
+    <span class="nf">movq</span>   <span class="mi">0x30</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">),</span> <span class="nv">%rax</span>
+    <span class="nf">mulq</span>   <span class="mi">0x10</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">)</span>  
+    <span class="no">addq</span>   <span class="nv">%rax</span><span class="p">,</span>       <span class="nv">%r10</span>
+    <span class="nf">adcq</span>   <span class="nv">%rdx</span><span class="p">,</span>       <span class="nv">%r11</span>
+    <span class="nf">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>       <span class="nv">%r12</span>
+    <span class="nf">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>       <span class="nv">%r13</span>
+    <span class="nf">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>       <span class="nv">%r14</span>
+    <span class="nf">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>       <span class="nv">%r15</span>
+    <span class="nf">movq</span>   <span class="mi">0x30</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">),</span> <span class="nv">%rax</span>
+    <span class="nf">mulq</span>   <span class="mi">0x8</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">)</span>   
+    <span class="no">addq</span>   <span class="nv">%rax</span><span class="p">,</span>       <span class="nv">%r11</span>
+    <span class="nf">adcq</span>   <span class="nv">%rdx</span><span class="p">,</span>       <span class="nv">%r12</span>
+    <span class="nf">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>       <span class="nv">%r13</span>
+    <span class="nf">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>       <span class="nv">%r14</span>
+    <span class="nf">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>       <span class="nv">%r15</span>
+    <span class="nf">movq</span>   <span class="mi">0x30</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">),</span> <span class="nv">%rax</span>
+    <span class="nf">mulq</span>   <span class="p">(</span><span class="nv">%rsp</span><span class="p">)</span>      
+    <span class="no">addq</span>   <span class="nv">%rax</span><span class="p">,</span>       <span class="nv">%r12</span>
+    <span class="nf">adcq</span>   <span class="nv">%rdx</span><span class="p">,</span>       <span class="nv">%r13</span>
+    <span class="nf">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>       <span class="nv">%r14</span>
+    <span class="nf">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>       <span class="nv">%r15</span>
+    <span class="nf">movq</span>   <span class="mi">0x28</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">),</span> <span class="nv">%rax</span>
+    <span class="nf">mulq</span>   <span class="mi">0x18</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">)</span>  
+    <span class="no">addq</span>   <span class="nv">%rax</span><span class="p">,</span>       <span class="nv">%r10</span>
+    <span class="nf">adcq</span>   <span class="nv">%rdx</span><span class="p">,</span>       <span class="nv">%r11</span>
+    <span class="nf">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>       <span class="nv">%r12</span>
+    <span class="nf">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>       <span class="nv">%r13</span>
+    <span class="nf">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>       <span class="nv">%r14</span>
+    <span class="nf">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>       <span class="nv">%r15</span>
+    <span class="nf">movq</span>   <span class="mi">0x28</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">),</span> <span class="nv">%rax</span>
+    <span class="nf">mulq</span>   <span class="mi">0x10</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">)</span>  
+    <span class="no">addq</span>   <span class="nv">%rax</span><span class="p">,</span>       <span class="nv">%r11</span>
+    <span class="nf">adcq</span>   <span class="nv">%rdx</span><span class="p">,</span>       <span class="nv">%r12</span>
+    <span class="nf">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>       <span class="nv">%r13</span>
+    <span class="nf">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>       <span class="nv">%r14</span>
+    <span class="nf">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>       <span class="nv">%r15</span>
+    <span class="nf">movq</span>   <span class="mi">0x28</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">),</span> <span class="nv">%rax</span>
+    <span class="nf">mulq</span>   <span class="mi">0x8</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">)</span>   
+    <span class="no">addq</span>   <span class="nv">%rax</span><span class="p">,</span>       <span class="nv">%r12</span>
+    <span class="nf">adcq</span>   <span class="nv">%rdx</span><span class="p">,</span>       <span class="nv">%r13</span>
+    <span class="nf">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>       <span class="nv">%r14</span>
+    <span class="nf">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>       <span class="nv">%r15</span>
+    <span class="nf">movq</span>   <span class="mi">0x28</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">),</span> <span class="nv">%rax</span>
+    <span class="nf">mulq</span>   <span class="p">(</span><span class="nv">%rsp</span><span class="p">)</span>      
+    <span class="no">addq</span>   <span class="nv">%rax</span><span class="p">,</span>       <span class="nv">%r13</span>
+    <span class="nf">adcq</span>   <span class="nv">%rdx</span><span class="p">,</span>       <span class="nv">%r14</span>
+    <span class="nf">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>       <span class="nv">%r15</span>
+    <span class="nf">movq</span>   <span class="mi">0x20</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">),</span> <span class="nv">%rax</span>
+    <span class="nf">mulq</span>   <span class="mi">0x18</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">)</span>  
+    <span class="no">addq</span>   <span class="nv">%rax</span><span class="p">,</span>       <span class="nv">%r11</span>
+    <span class="nf">adcq</span>   <span class="nv">%rdx</span><span class="p">,</span>       <span class="nv">%r12</span>
+    <span class="nf">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>       <span class="nv">%r13</span>
+    <span class="nf">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>       <span class="nv">%r14</span>
+    <span class="nf">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>       <span class="nv">%r15</span>
+    <span class="nf">movq</span>   <span class="mi">0x20</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">),</span> <span class="nv">%rax</span>
+    <span class="nf">mulq</span>   <span class="mi">0x10</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">)</span>  
+    <span class="no">addq</span>   <span class="nv">%rax</span><span class="p">,</span>       <span class="nv">%r12</span>
+    <span class="nf">adcq</span>   <span class="nv">%rdx</span><span class="p">,</span>       <span class="nv">%r13</span>
+    <span class="nf">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>       <span class="nv">%r14</span>
+    <span class="nf">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>       <span class="nv">%r15</span>
+    <span class="nf">movq</span>   <span class="mi">0x20</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">),</span> <span class="nv">%rax</span>
+    <span class="nf">mulq</span>   <span class="mi">0x8</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">)</span>   
+    <span class="no">addq</span>   <span class="nv">%rax</span><span class="p">,</span>       <span class="nv">%r13</span>
+    <span class="nf">adcq</span>   <span class="nv">%rdx</span><span class="p">,</span>       <span class="nv">%r14</span>
+    <span class="nf">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>       <span class="nv">%r15</span>
+    <span class="nf">movq</span>   <span class="mi">0x20</span><span class="p">(</span><span class="nv">%rsp</span><span class="p">),</span> <span class="nv">%rax</span>
+    <span class="nf">mulq</span>   <span class="p">(</span><span class="nv">%rsp</span><span class="p">)</span>      
+    <span class="no">addq</span>   <span class="nv">%rax</span><span class="p">,</span>       <span class="nv">%r14</span>
+    <span class="nf">adcq</span>   <span class="nv">%rdx</span><span class="p">,</span>       <span class="nv">%r15</span>
 
-    <span style="color:#95a5a6">;; Finally, we move everything out of registers so we can
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; return it on the stack
-</span><span style="color:#95a5a6"></span>    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%r8</span>,   (<span style="color:#434f54">%rdi</span>)
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%r9</span>,   <span style="color:#8a7b52">0x8</span>(<span style="color:#434f54">%rdi</span>)
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%r10</span>,  <span style="color:#8a7b52">0x10</span>(<span style="color:#434f54">%rdi</span>)
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%r11</span>,  <span style="color:#8a7b52">0x18</span>(<span style="color:#434f54">%rdi</span>)
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%r12</span>,  <span style="color:#8a7b52">0x20</span>(<span style="color:#434f54">%rdi</span>)
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%r13</span>,  <span style="color:#8a7b52">0x28</span>(<span style="color:#434f54">%rdi</span>)
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%r14</span>,  <span style="color:#8a7b52">0x30</span>(<span style="color:#434f54">%rdi</span>)
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%r15</span>,  <span style="color:#8a7b52">0x38</span>(<span style="color:#434f54">%rdi</span>)
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rdi</span>,  <span style="color:#434f54">%rax</span>
-    <span style="color:#d35400">addq</span>   <span style="color:#434f54">$0x40</span>, <span style="color:#434f54">%rsp</span>
-    <span style="color:#d35400">popq</span>   <span style="color:#434f54">%r12</span>
-    <span style="color:#d35400">popq</span>   <span style="color:#434f54">%r13</span>
-    <span style="color:#d35400">popq</span>   <span style="color:#434f54">%r14</span>
-    <span style="color:#d35400">popq</span>   <span style="color:#434f54">%r15</span>
-    <span style="color:#d35400">retq</span>   </code></pre></div>
+    <span class="c">;; Finally, we move everything out of registers so we can
+</span><span class="c"></span>    <span class="c">;; return it on the stack
+</span><span class="c"></span>    <span class="nf">movq</span>   <span class="nv">%r8</span><span class="p">,</span>   <span class="p">(</span><span class="nv">%rdi</span><span class="p">)</span>
+    <span class="nf">movq</span>   <span class="nv">%r9</span><span class="p">,</span>   <span class="mi">0x8</span><span class="p">(</span><span class="nv">%rdi</span><span class="p">)</span>
+    <span class="nf">movq</span>   <span class="nv">%r10</span><span class="p">,</span>  <span class="mi">0x10</span><span class="p">(</span><span class="nv">%rdi</span><span class="p">)</span>
+    <span class="nf">movq</span>   <span class="nv">%r11</span><span class="p">,</span>  <span class="mi">0x18</span><span class="p">(</span><span class="nv">%rdi</span><span class="p">)</span>
+    <span class="nf">movq</span>   <span class="nv">%r12</span><span class="p">,</span>  <span class="mi">0x20</span><span class="p">(</span><span class="nv">%rdi</span><span class="p">)</span>
+    <span class="nf">movq</span>   <span class="nv">%r13</span><span class="p">,</span>  <span class="mi">0x28</span><span class="p">(</span><span class="nv">%rdi</span><span class="p">)</span>
+    <span class="nf">movq</span>   <span class="nv">%r14</span><span class="p">,</span>  <span class="mi">0x30</span><span class="p">(</span><span class="nv">%rdi</span><span class="p">)</span>
+    <span class="nf">movq</span>   <span class="nv">%r15</span><span class="p">,</span>  <span class="mi">0x38</span><span class="p">(</span><span class="nv">%rdi</span><span class="p">)</span>
+    <span class="nf">movq</span>   <span class="nv">%rdi</span><span class="p">,</span>  <span class="nv">%rax</span>
+    <span class="nf">addq</span>   <span class="no">$0x40</span><span class="p">,</span> <span class="nv">%rsp</span>
+    <span class="nf">popq</span>   <span class="nv">%r12</span>
+    <span class="nf">popq</span>   <span class="nv">%r13</span>
+    <span class="nf">popq</span>   <span class="nv">%r14</span>
+    <span class="nf">popq</span>   <span class="nv">%r15</span>
+    <span class="nf">retq</span>   </code></pre></div>
 <p>So as you can see from my comments, there are a lot of inefficiencies in this code. We multiply on variables from memory instead of from registers, we do superfluous stores and loads, also the CPU has to do many stores and loads before even getting to the &ldquo;real&rdquo; code (the multiply-add loop), which is important because although the CPU can do loads and stores in parallel with calculations, the way that this code is written requires it to wait for everything to be loaded before it starts doing calculations. This is because the <code>asm</code> macro hides a lot of details. Essentially you&rsquo;re telling the compiler to put the input data wherever it likes, and then to substitute wherever it put the data into your assembly code with string manipulation. The compiler stores everything into registers, but then we instruct it to put the input arrays in memory (with the <code>&quot;m&quot;</code> before the input parameters) so it loads it back into memory again. There are ways that you could write this code to remove the inefficiencies in it, but it is clearly very difficult for even a seasoned professional to write the correct code here. This code is bug-prone - if you hadn&rsquo;t zeroed the output registers with the series of <code>xor</code> instructions then the code would fail sometimes but not always, with seemingly-random values that depended on the calling function&rsquo;s internal state. It could probably be sped up by replacing <code>&quot;m&quot;</code> with <code>&quot;r&quot;</code> here (I hadn&rsquo;t tested that because I only realised that this is a problem while investigating why the old assembly was so much slower in the course of writing this article), but that&rsquo;s not clear from reading the source code of the program and only someone with quite in-depth knowledge of LLVM&rsquo;s assembly syntax would realise that when looking at the code.</p>
 
 <p>By comparison, the Rust code that uses <code>u128</code> is about as say-what-you-mean as you can get. Even if your goal was not optimisation you would probably write something similar to it as the simplest solution to the problem, but the code that LLVM produces is very high-quality. You can see already that it&rsquo;s not too different to our hand-written code, but it addresses some of the issues (commented below) while also including a couple more optimisations that I wouldn&rsquo;t have even thought of. I couldn&rsquo;t find any significant optimisations that it missed.</p>
 
 <p>Here&rsquo;s the generated assembly:</p>
-<div class="highlight"><pre style="background-color:#fff;-moz-tab-size:4;-o-tab-size:4;tab-size:4"><code class="language-gas" data-lang="gas"><span style="color:#434f54">bigint:</span><span style="color:#a61717">:</span><span style="color:#434f54">U256:</span><span style="color:#a61717">:</span><span style="color:#434f54">full_mul:</span>
-    <span style="color:#95a5a6">;; Function prelude
-</span><span style="color:#95a5a6"></span>    <span style="color:#d35400">pushq</span>  <span style="color:#434f54">%rbp</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rsp</span>, <span style="color:#434f54">%rbp</span>
-    <span style="color:#d35400">pushq</span>  <span style="color:#434f54">%r15</span>
-    <span style="color:#d35400">pushq</span>  <span style="color:#434f54">%r14</span>
-    <span style="color:#d35400">pushq</span>  <span style="color:#434f54">%r13</span>
-    <span style="color:#d35400">pushq</span>  <span style="color:#434f54">%r12</span>
-    <span style="color:#d35400">pushq</span>  <span style="color:#434f54">%rbx</span>
-    <span style="color:#d35400">subq</span>   <span style="color:#434f54">$0x48</span>, <span style="color:#434f54">%rsp</span>
+<div class="highlight"><pre class="chroma"><code class="language-gas" data-lang="gas"><span class="nl">bigint:</span><span class="err">:</span><span class="nl">U256:</span><span class="err">:</span><span class="nl">full_mul:</span>
+    <span class="c">;; Function prelude
+</span><span class="c"></span>    <span class="nf">pushq</span>  <span class="nv">%rbp</span>
+    <span class="nf">movq</span>   <span class="nv">%rsp</span><span class="p">,</span> <span class="nv">%rbp</span>
+    <span class="nf">pushq</span>  <span class="nv">%r15</span>
+    <span class="nf">pushq</span>  <span class="nv">%r14</span>
+    <span class="nf">pushq</span>  <span class="nv">%r13</span>
+    <span class="nf">pushq</span>  <span class="nv">%r12</span>
+    <span class="nf">pushq</span>  <span class="nv">%rbx</span>
+    <span class="nf">subq</span>   <span class="no">$0x48</span><span class="p">,</span> <span class="nv">%rsp</span>
 
-    <span style="color:#d35400">movq</span>   <span style="color:#8a7b52">0x10</span>(<span style="color:#434f54">%rbp</span>), <span style="color:#434f54">%r11</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#8a7b52">0x18</span>(<span style="color:#434f54">%rbp</span>), <span style="color:#434f54">%rsi</span>
+    <span class="nf">movq</span>   <span class="mi">0x10</span><span class="p">(</span><span class="nv">%rbp</span><span class="p">),</span> <span class="nv">%r11</span>
+    <span class="nf">movq</span>   <span class="mi">0x18</span><span class="p">(</span><span class="nv">%rbp</span><span class="p">),</span> <span class="nv">%rsi</span>
 
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rsi</span>, -<span style="color:#8a7b52">0x38</span>(<span style="color:#434f54">%rbp</span>)
+    <span class="nf">movq</span>   <span class="nv">%rsi</span><span class="p">,</span> <span class="p">-</span><span class="mi">0x38</span><span class="p">(</span><span class="nv">%rbp</span><span class="p">)</span>
 
-    <span style="color:#95a5a6">;; I originally thought that this was a missed optimisation,
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; but it actually has to do this (instead of doing
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; `movq 0x30(%rbp), %rax`) because the `%rax` register gets
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; clobbered by the `mulq` below. This means it can multiply
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; the first element of the first array by each of the
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; elements of th without having to reload it from memory
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; like the hand-written assembly does.
-</span><span style="color:#95a5a6"></span>    <span style="color:#d35400">movq</span>   <span style="color:#8a7b52">0x30</span>(<span style="color:#434f54">%rbp</span>), <span style="color:#434f54">%rcx</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rcx</span>,       <span style="color:#434f54">%rax</span>
+    <span class="c">;; I originally thought that this was a missed optimisation,
+</span><span class="c"></span>    <span class="c">;; but it actually has to do this (instead of doing
+</span><span class="c"></span>    <span class="c">;; `movq 0x30(%rbp), %rax`) because the `%rax` register gets
+</span><span class="c"></span>    <span class="c">;; clobbered by the `mulq` below. This means it can multiply
+</span><span class="c"></span>    <span class="c">;; the first element of the first array by each of the
+</span><span class="c"></span>    <span class="c">;; elements of th without having to reload it from memory
+</span><span class="c"></span>    <span class="c">;; like the hand-written assembly does.
+</span><span class="c"></span>    <span class="nf">movq</span>   <span class="mi">0x30</span><span class="p">(</span><span class="nv">%rbp</span><span class="p">),</span> <span class="nv">%rcx</span>
+    <span class="nf">movq</span>   <span class="nv">%rcx</span><span class="p">,</span>       <span class="nv">%rax</span>
 
-    <span style="color:#95a5a6">;; LLVM multiplies from a register instead of from memory
-</span><span style="color:#95a5a6"></span>    <span style="color:#d35400">mulq</span>   <span style="color:#434f54">%r11</span>
+    <span class="c">;; LLVM multiplies from a register instead of from memory
+</span><span class="c"></span>    <span class="nf">mulq</span>   <span class="nv">%r11</span>
 
-    <span style="color:#95a5a6">;; LLVM moves `%rdx` (the upper bits) into a register, since
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; we need to operate on it further. It moves `%rax` (the
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; lower bits) directly into memory because we don&#39;t need
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; to do any further work on it. This is better than moving
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; in and out of memory like we do in the previous code.
-</span><span style="color:#95a5a6"></span>    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rdx</span>, <span style="color:#434f54">%r9</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rax</span>, -<span style="color:#8a7b52">0x70</span>(<span style="color:#434f54">%rbp</span>)
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rcx</span>, <span style="color:#434f54">%rax</span>
-    <span style="color:#d35400">mulq</span>   <span style="color:#434f54">%rsi</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rax</span>, <span style="color:#434f54">%rbx</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rdx</span>, <span style="color:#434f54">%r8</span>
+    <span class="c">;; LLVM moves `%rdx` (the upper bits) into a register, since
+</span><span class="c"></span>    <span class="c">;; we need to operate on it further. It moves `%rax` (the
+</span><span class="c"></span>    <span class="c">;; lower bits) directly into memory because we don&#39;t need
+</span><span class="c"></span>    <span class="c">;; to do any further work on it. This is better than moving
+</span><span class="c"></span>    <span class="c">;; in and out of memory like we do in the previous code.
+</span><span class="c"></span>    <span class="nf">movq</span>   <span class="nv">%rdx</span><span class="p">,</span> <span class="nv">%r9</span>
+    <span class="nf">movq</span>   <span class="nv">%rax</span><span class="p">,</span> <span class="p">-</span><span class="mi">0x70</span><span class="p">(</span><span class="nv">%rbp</span><span class="p">)</span>
+    <span class="nf">movq</span>   <span class="nv">%rcx</span><span class="p">,</span> <span class="nv">%rax</span>
+    <span class="nf">mulq</span>   <span class="nv">%rsi</span>
+    <span class="nf">movq</span>   <span class="nv">%rax</span><span class="p">,</span> <span class="nv">%rbx</span>
+    <span class="nf">movq</span>   <span class="nv">%rdx</span><span class="p">,</span> <span class="nv">%r8</span>
 
-    <span style="color:#d35400">movq</span>   <span style="color:#8a7b52">0x20</span>(<span style="color:#434f54">%rbp</span>), <span style="color:#434f54">%rsi</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rcx</span>,       <span style="color:#434f54">%rax</span>
-    <span style="color:#d35400">mulq</span>   <span style="color:#434f54">%rsi</span>
+    <span class="nf">movq</span>   <span class="mi">0x20</span><span class="p">(</span><span class="nv">%rbp</span><span class="p">),</span> <span class="nv">%rsi</span>
+    <span class="nf">movq</span>   <span class="nv">%rcx</span><span class="p">,</span>       <span class="nv">%rax</span>
+    <span class="nf">mulq</span>   <span class="nv">%rsi</span>
 
-    <span style="color:#95a5a6">;; LLVM uses `%r13` as an intermediate because it needs this
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; value in `%r13` later to operate on it anyway.
-</span><span style="color:#95a5a6"></span>    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rsi</span>,       <span style="color:#434f54">%r13</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%r13</span>,       -<span style="color:#8a7b52">0x40</span>(<span style="color:#434f54">%rbp</span>)
+    <span class="c">;; LLVM uses `%r13` as an intermediate because it needs this
+</span><span class="c"></span>    <span class="c">;; value in `%r13` later to operate on it anyway.
+</span><span class="c"></span>    <span class="nf">movq</span>   <span class="nv">%rsi</span><span class="p">,</span>       <span class="nv">%r13</span>
+    <span class="nf">movq</span>   <span class="nv">%r13</span><span class="p">,</span>       <span class="p">-</span><span class="mi">0x40</span><span class="p">(</span><span class="nv">%rbp</span><span class="p">)</span>
 
-    <span style="color:#95a5a6">;; Again, we have to operate on both the low and high bits
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; so LLVM moves them both into registers.
-</span><span style="color:#95a5a6"></span>    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rax</span>,       <span style="color:#434f54">%r10</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rdx</span>,       <span style="color:#434f54">%r14</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#8a7b52">0x28</span>(<span style="color:#434f54">%rbp</span>), <span style="color:#434f54">%rdx</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rdx</span>,       -<span style="color:#8a7b52">0x48</span>(<span style="color:#434f54">%rbp</span>)
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rcx</span>,       <span style="color:#434f54">%rax</span>
-    <span style="color:#d35400">mulq</span>   <span style="color:#434f54">%rdx</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rax</span>,       <span style="color:#434f54">%r12</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rdx</span>,       -<span style="color:#8a7b52">0x58</span>(<span style="color:#434f54">%rbp</span>)
-    <span style="color:#d35400">movq</span>   <span style="color:#8a7b52">0x38</span>(<span style="color:#434f54">%rbp</span>), <span style="color:#434f54">%r15</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%r15</span>,       <span style="color:#434f54">%rax</span>
-    <span style="color:#d35400">mulq</span>   <span style="color:#434f54">%r11</span>
-    <span style="color:#d35400">addq</span>   <span style="color:#434f54">%r9</span>,        <span style="color:#434f54">%rbx</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">%r8</span>,        <span style="color:#434f54">%r10</span>
+    <span class="c">;; Again, we have to operate on both the low and high bits
+</span><span class="c"></span>    <span class="c">;; so LLVM moves them both into registers.
+</span><span class="c"></span>    <span class="nf">movq</span>   <span class="nv">%rax</span><span class="p">,</span>       <span class="nv">%r10</span>
+    <span class="nf">movq</span>   <span class="nv">%rdx</span><span class="p">,</span>       <span class="nv">%r14</span>
+    <span class="nf">movq</span>   <span class="mi">0x28</span><span class="p">(</span><span class="nv">%rbp</span><span class="p">),</span> <span class="nv">%rdx</span>
+    <span class="nf">movq</span>   <span class="nv">%rdx</span><span class="p">,</span>       <span class="p">-</span><span class="mi">0x48</span><span class="p">(</span><span class="nv">%rbp</span><span class="p">)</span>
+    <span class="nf">movq</span>   <span class="nv">%rcx</span><span class="p">,</span>       <span class="nv">%rax</span>
+    <span class="nf">mulq</span>   <span class="nv">%rdx</span>
+    <span class="nf">movq</span>   <span class="nv">%rax</span><span class="p">,</span>       <span class="nv">%r12</span>
+    <span class="nf">movq</span>   <span class="nv">%rdx</span><span class="p">,</span>       <span class="p">-</span><span class="mi">0x58</span><span class="p">(</span><span class="nv">%rbp</span><span class="p">)</span>
+    <span class="nf">movq</span>   <span class="mi">0x38</span><span class="p">(</span><span class="nv">%rbp</span><span class="p">),</span> <span class="nv">%r15</span>
+    <span class="nf">movq</span>   <span class="nv">%r15</span><span class="p">,</span>       <span class="nv">%rax</span>
+    <span class="nf">mulq</span>   <span class="nv">%r11</span>
+    <span class="nf">addq</span>   <span class="nv">%r9</span><span class="p">,</span>        <span class="nv">%rbx</span>
+    <span class="nf">adcq</span>   <span class="nv">%r8</span><span class="p">,</span>        <span class="nv">%r10</span>
 
-    <span style="color:#95a5a6">;; These two instructions store the flags into the `%rcx`
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; register.
-</span><span style="color:#95a5a6"></span>    <span style="color:#d35400">pushfq</span> 
-    <span style="color:#434f54">popq</span>   <span style="color:#434f54">%rcx</span>
-    <span style="color:#d35400">addq</span>   <span style="color:#434f54">%rax</span>, <span style="color:#434f54">%rbx</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rbx</span>, -<span style="color:#8a7b52">0x68</span>(<span style="color:#434f54">%rbp</span>)
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">%rdx</span>, <span style="color:#434f54">%r10</span>
+    <span class="c">;; These two instructions store the flags into the `%rcx`
+</span><span class="c"></span>    <span class="c">;; register.
+</span><span class="c"></span>    <span class="nf">pushfq</span> 
+    <span class="no">popq</span>   <span class="nv">%rcx</span>
+    <span class="nf">addq</span>   <span class="nv">%rax</span><span class="p">,</span> <span class="nv">%rbx</span>
+    <span class="nf">movq</span>   <span class="nv">%rbx</span><span class="p">,</span> <span class="p">-</span><span class="mi">0x68</span><span class="p">(</span><span class="nv">%rbp</span><span class="p">)</span>
+    <span class="nf">adcq</span>   <span class="nv">%rdx</span><span class="p">,</span> <span class="nv">%r10</span>
 
-    <span style="color:#95a5a6">;; This stores the flags from the previous calculation into
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; `%r8`.
-</span><span style="color:#95a5a6"></span>    <span style="color:#d35400">pushfq</span> 
-    <span style="color:#434f54">popq</span>   <span style="color:#434f54">%r8</span>
+    <span class="c">;; This stores the flags from the previous calculation into
+</span><span class="c"></span>    <span class="c">;; `%r8`.
+</span><span class="c"></span>    <span class="nf">pushfq</span> 
+    <span class="no">popq</span>   <span class="nv">%r8</span>
 
-    <span style="color:#95a5a6">;; LLVM takes the flags back out of `%rcx` and then does an
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; add including the carry flag. This is smart. It means we
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; don&#39;t need to do the weird-looking addition of zero since
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; we combine the addition of the carry flag and the addition
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; of the number&#39;s components together into one instruction.
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;;
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; It&#39;s possible that the way LLVM does it is faster on modern
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; processors, but storing this in `%rcx` is unnecessary,
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; because the flags would be at the top of the stack anyway
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; (i.e. you could remove the `popq %rcx` above and this
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; `pushq %rcx` and it would act the same). If it is slower
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; then the difference will be negligible.
-</span><span style="color:#95a5a6"></span>    <span style="color:#d35400">pushq</span>  <span style="color:#434f54">%rcx</span>
-    <span style="color:#d35400">popfq</span>  
-    <span style="color:#434f54">adcq</span>   <span style="color:#434f54">%r14</span>, <span style="color:#434f54">%r12</span>
+    <span class="c">;; LLVM takes the flags back out of `%rcx` and then does an
+</span><span class="c"></span>    <span class="c">;; add including the carry flag. This is smart. It means we
+</span><span class="c"></span>    <span class="c">;; don&#39;t need to do the weird-looking addition of zero since
+</span><span class="c"></span>    <span class="c">;; we combine the addition of the carry flag and the addition
+</span><span class="c"></span>    <span class="c">;; of the number&#39;s components together into one instruction.
+</span><span class="c"></span>    <span class="c">;;
+</span><span class="c"></span>    <span class="c">;; It&#39;s possible that the way LLVM does it is faster on modern
+</span><span class="c"></span>    <span class="c">;; processors, but storing this in `%rcx` is unnecessary,
+</span><span class="c"></span>    <span class="c">;; because the flags would be at the top of the stack anyway
+</span><span class="c"></span>    <span class="c">;; (i.e. you could remove the `popq %rcx` above and this
+</span><span class="c"></span>    <span class="c">;; `pushq %rcx` and it would act the same). If it is slower
+</span><span class="c"></span>    <span class="c">;; then the difference will be negligible.
+</span><span class="c"></span>    <span class="nf">pushq</span>  <span class="nv">%rcx</span>
+    <span class="nf">popfq</span>  
+    <span class="no">adcq</span>   <span class="nv">%r14</span><span class="p">,</span> <span class="nv">%r12</span>
 
-    <span style="color:#d35400">pushfq</span> 
-    <span style="color:#434f54">popq</span>   <span style="color:#434f54">%rax</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rax</span>,        -<span style="color:#8a7b52">0x50</span>(<span style="color:#434f54">%rbp</span>)
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%r15</span>,        <span style="color:#434f54">%rax</span>
-    <span style="color:#d35400">movq</span>   -<span style="color:#8a7b52">0x38</span>(<span style="color:#434f54">%rbp</span>), <span style="color:#434f54">%rsi</span>
-    <span style="color:#d35400">mulq</span>   <span style="color:#434f54">%rsi</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rdx</span>,        <span style="color:#434f54">%rbx</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rax</span>,        <span style="color:#434f54">%r9</span>
-    <span style="color:#d35400">addq</span>   <span style="color:#434f54">%r10</span>,        <span style="color:#434f54">%r9</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">$0x0</span>,        <span style="color:#434f54">%rbx</span>
-    <span style="color:#d35400">pushq</span>  <span style="color:#434f54">%r8</span>
-    <span style="color:#d35400">popfq</span>  
-    <span style="color:#434f54">adcq</span>   <span style="color:#434f54">$0x0</span>,        <span style="color:#434f54">%rbx</span>
+    <span class="nf">pushfq</span> 
+    <span class="no">popq</span>   <span class="nv">%rax</span>
+    <span class="nf">movq</span>   <span class="nv">%rax</span><span class="p">,</span>        <span class="p">-</span><span class="mi">0x50</span><span class="p">(</span><span class="nv">%rbp</span><span class="p">)</span>
+    <span class="nf">movq</span>   <span class="nv">%r15</span><span class="p">,</span>        <span class="nv">%rax</span>
+    <span class="nf">movq</span>   <span class="p">-</span><span class="mi">0x38</span><span class="p">(</span><span class="nv">%rbp</span><span class="p">),</span> <span class="nv">%rsi</span>
+    <span class="nf">mulq</span>   <span class="nv">%rsi</span>
+    <span class="nf">movq</span>   <span class="nv">%rdx</span><span class="p">,</span>        <span class="nv">%rbx</span>
+    <span class="nf">movq</span>   <span class="nv">%rax</span><span class="p">,</span>        <span class="nv">%r9</span>
+    <span class="nf">addq</span>   <span class="nv">%r10</span><span class="p">,</span>        <span class="nv">%r9</span>
+    <span class="nf">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>        <span class="nv">%rbx</span>
+    <span class="nf">pushq</span>  <span class="nv">%r8</span>
+    <span class="nf">popfq</span>  
+    <span class="no">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>        <span class="nv">%rbx</span>
 
-    <span style="color:#95a5a6">;; `setb` is used instead of explicitly zeroing registers and
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; then adding the carry bit. `setb` just sets the byte at the
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; given address to 1 if the carry flag is set (since this is
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; basically a `mov` it&#39;s faster than zeroing and then adding)
-</span><span style="color:#95a5a6"></span>    <span style="color:#d35400">setb</span>   -<span style="color:#8a7b52">0x29</span>(<span style="color:#434f54">%rbp</span>)
-    <span style="color:#d35400">addq</span>   <span style="color:#434f54">%r12</span>, <span style="color:#434f54">%rbx</span>
+    <span class="c">;; `setb` is used instead of explicitly zeroing registers and
+</span><span class="c"></span>    <span class="c">;; then adding the carry bit. `setb` just sets the byte at the
+</span><span class="c"></span>    <span class="c">;; given address to 1 if the carry flag is set (since this is
+</span><span class="c"></span>    <span class="c">;; basically a `mov` it&#39;s faster than zeroing and then adding)
+</span><span class="c"></span>    <span class="nf">setb</span>   <span class="p">-</span><span class="mi">0x29</span><span class="p">(</span><span class="nv">%rbp</span><span class="p">)</span>
+    <span class="nf">addq</span>   <span class="nv">%r12</span><span class="p">,</span> <span class="nv">%rbx</span>
 
-    <span style="color:#d35400">setb</span>   <span style="color:#434f54">%r10b</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%r15</span>, <span style="color:#434f54">%rax</span>
-    <span style="color:#d35400">mulq</span>   <span style="color:#434f54">%r13</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rax</span>, <span style="color:#434f54">%r12</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rdx</span>, <span style="color:#434f54">%r8</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#8a7b52">0x40</span>(<span style="color:#434f54">%rbp</span>), <span style="color:#434f54">%r14</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%r14</span>, <span style="color:#434f54">%rax</span>
-    <span style="color:#d35400">mulq</span>   <span style="color:#434f54">%r11</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rdx</span>, <span style="color:#434f54">%r13</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rax</span>, <span style="color:#434f54">%rcx</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%r14</span>, <span style="color:#434f54">%rax</span>
-    <span style="color:#d35400">mulq</span>   <span style="color:#434f54">%rsi</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rdx</span>, <span style="color:#434f54">%rsi</span>
-    <span style="color:#d35400">addq</span>   <span style="color:#434f54">%r9</span>, <span style="color:#434f54">%rcx</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rcx</span>, -<span style="color:#8a7b52">0x60</span>(<span style="color:#434f54">%rbp</span>)
+    <span class="nf">setb</span>   <span class="nv">%r10b</span>
+    <span class="nf">movq</span>   <span class="nv">%r15</span><span class="p">,</span> <span class="nv">%rax</span>
+    <span class="nf">mulq</span>   <span class="nv">%r13</span>
+    <span class="nf">movq</span>   <span class="nv">%rax</span><span class="p">,</span> <span class="nv">%r12</span>
+    <span class="nf">movq</span>   <span class="nv">%rdx</span><span class="p">,</span> <span class="nv">%r8</span>
+    <span class="nf">movq</span>   <span class="mi">0x40</span><span class="p">(</span><span class="nv">%rbp</span><span class="p">),</span> <span class="nv">%r14</span>
+    <span class="nf">movq</span>   <span class="nv">%r14</span><span class="p">,</span> <span class="nv">%rax</span>
+    <span class="nf">mulq</span>   <span class="nv">%r11</span>
+    <span class="nf">movq</span>   <span class="nv">%rdx</span><span class="p">,</span> <span class="nv">%r13</span>
+    <span class="nf">movq</span>   <span class="nv">%rax</span><span class="p">,</span> <span class="nv">%rcx</span>
+    <span class="nf">movq</span>   <span class="nv">%r14</span><span class="p">,</span> <span class="nv">%rax</span>
+    <span class="nf">mulq</span>   <span class="nv">%rsi</span>
+    <span class="nf">movq</span>   <span class="nv">%rdx</span><span class="p">,</span> <span class="nv">%rsi</span>
+    <span class="nf">addq</span>   <span class="nv">%r9</span><span class="p">,</span> <span class="nv">%rcx</span>
+    <span class="nf">movq</span>   <span class="nv">%rcx</span><span class="p">,</span> <span class="p">-</span><span class="mi">0x60</span><span class="p">(</span><span class="nv">%rbp</span><span class="p">)</span>
 
-    <span style="color:#95a5a6">;; This is essentially a hack to add `%r12` and `%rbx` and store
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; the output in `%rcx`. It&#39;s one instruction instead of the two
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; that would be otherwise required. `leaq` is the take-address-of
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; instruction, so this line is essentially the same as if you did
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; `&amp;((void*)first)[second]` instead of `first + second` in C. In
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; assembly, though, there are no hacks. Every dirty trick is fair
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; game.
-</span><span style="color:#95a5a6"></span>    <span style="color:#d35400">leaq</span>   (<span style="color:#434f54">%r12</span>,<span style="color:#434f54">%rbx</span>), <span style="color:#434f54">%rcx</span>
+    <span class="c">;; This is essentially a hack to add `%r12` and `%rbx` and store
+</span><span class="c"></span>    <span class="c">;; the output in `%rcx`. It&#39;s one instruction instead of the two
+</span><span class="c"></span>    <span class="c">;; that would be otherwise required. `leaq` is the take-address-of
+</span><span class="c"></span>    <span class="c">;; instruction, so this line is essentially the same as if you did
+</span><span class="c"></span>    <span class="c">;; `&amp;((void*)first)[second]` instead of `first + second` in C. In
+</span><span class="c"></span>    <span class="c">;; assembly, though, there are no hacks. Every dirty trick is fair
+</span><span class="c"></span>    <span class="c">;; game.
+</span><span class="c"></span>    <span class="nf">leaq</span>   <span class="p">(</span><span class="nv">%r12</span><span class="p">,</span><span class="nv">%rbx</span><span class="p">),</span> <span class="nv">%rcx</span>
 
-    <span style="color:#95a5a6">;; The rest of the code doesn&#39;t have any new tricks, just the same
-</span><span style="color:#95a5a6"></span>    <span style="color:#95a5a6">;; ones repeated.
-</span><span style="color:#95a5a6"></span>    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">%rcx</span>,        <span style="color:#434f54">%r13</span>
-    <span style="color:#d35400">pushfq</span> 
-    <span style="color:#434f54">popq</span>   <span style="color:#434f54">%rcx</span>
-    <span style="color:#d35400">addq</span>   <span style="color:#434f54">%rax</span>,        <span style="color:#434f54">%r13</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">$0x0</span>,        <span style="color:#434f54">%rsi</span>
-    <span style="color:#d35400">pushq</span>  <span style="color:#434f54">%rcx</span>
-    <span style="color:#d35400">popfq</span>  
-    <span style="color:#434f54">adcq</span>   <span style="color:#434f54">$0x0</span>,        <span style="color:#434f54">%rsi</span>
-    <span style="color:#d35400">setb</span>   -<span style="color:#8a7b52">0x2a</span>(<span style="color:#434f54">%rbp</span>)
-    <span style="color:#d35400">orb</span>    -<span style="color:#8a7b52">0x29</span>(<span style="color:#434f54">%rbp</span>), <span style="color:#434f54">%r10b</span>
-    <span style="color:#d35400">addq</span>   <span style="color:#434f54">%r12</span>,        <span style="color:#434f54">%rbx</span>
-    <span style="color:#d35400">movzbl</span> <span style="color:#434f54">%r10b</span>,       <span style="color:#434f54">%ebx</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">%r8</span>,         <span style="color:#434f54">%rbx</span>
-    <span style="color:#d35400">setb</span>   <span style="color:#434f54">%al</span>
-    <span style="color:#d35400">movq</span>   -<span style="color:#8a7b52">0x50</span>(<span style="color:#434f54">%rbp</span>), <span style="color:#434f54">%rcx</span>
-    <span style="color:#d35400">pushq</span>  <span style="color:#434f54">%rcx</span>
-    <span style="color:#d35400">popfq</span>  
-    <span style="color:#434f54">adcq</span>   -<span style="color:#8a7b52">0x58</span>(<span style="color:#434f54">%rbp</span>), <span style="color:#434f54">%rbx</span>
-    <span style="color:#d35400">setb</span>   <span style="color:#434f54">%r8b</span>
-    <span style="color:#d35400">orb</span>    <span style="color:#434f54">%al</span>,         <span style="color:#434f54">%r8b</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%r15</span>,        <span style="color:#434f54">%rax</span>
-    <span style="color:#d35400">mulq</span>   -<span style="color:#8a7b52">0x48</span>(<span style="color:#434f54">%rbp</span>)
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rdx</span>,        <span style="color:#434f54">%r12</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rax</span>,        <span style="color:#434f54">%rcx</span>
-    <span style="color:#d35400">addq</span>   <span style="color:#434f54">%rbx</span>,        <span style="color:#434f54">%rcx</span>
-    <span style="color:#d35400">movzbl</span> <span style="color:#434f54">%r8b</span>,        <span style="color:#434f54">%eax</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">%rax</span>,        <span style="color:#434f54">%r12</span>
-    <span style="color:#d35400">addq</span>   <span style="color:#434f54">%rsi</span>,        <span style="color:#434f54">%rcx</span>
-    <span style="color:#d35400">setb</span>   <span style="color:#434f54">%r10b</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%r14</span>,        <span style="color:#434f54">%rax</span>
-    <span style="color:#d35400">mulq</span>   -<span style="color:#8a7b52">0x40</span>(<span style="color:#434f54">%rbp</span>)
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rax</span>,        <span style="color:#434f54">%r8</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rdx</span>,        <span style="color:#434f54">%rsi</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#8a7b52">0x48</span>(<span style="color:#434f54">%rbp</span>),  <span style="color:#434f54">%r15</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%r15</span>,        <span style="color:#434f54">%rax</span>
-    <span style="color:#d35400">mulq</span>   <span style="color:#434f54">%r11</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rdx</span>,        <span style="color:#434f54">%r9</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rax</span>,        <span style="color:#434f54">%r11</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%r15</span>,        <span style="color:#434f54">%rax</span>
-    <span style="color:#d35400">mulq</span>   -<span style="color:#8a7b52">0x38</span>(<span style="color:#434f54">%rbp</span>)
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rdx</span>,        <span style="color:#434f54">%rbx</span>
-    <span style="color:#d35400">addq</span>   <span style="color:#434f54">%r13</span>,        <span style="color:#434f54">%r11</span>
-    <span style="color:#d35400">leaq</span>   (<span style="color:#434f54">%r8</span>,<span style="color:#434f54">%rcx</span>),  <span style="color:#434f54">%rdx</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">%rdx</span>,        <span style="color:#434f54">%r9</span>
-    <span style="color:#d35400">pushfq</span> 
-    <span style="color:#434f54">popq</span>   <span style="color:#434f54">%rdx</span>
-    <span style="color:#d35400">addq</span>   <span style="color:#434f54">%rax</span>,        <span style="color:#434f54">%r9</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">$0x0</span>,        <span style="color:#434f54">%rbx</span>
-    <span style="color:#d35400">pushq</span>  <span style="color:#434f54">%rdx</span>
-    <span style="color:#d35400">popfq</span>  
-    <span style="color:#434f54">adcq</span>   <span style="color:#434f54">$0x0</span>,        <span style="color:#434f54">%rbx</span>
-    <span style="color:#d35400">setb</span>   <span style="color:#434f54">%r13b</span>
-    <span style="color:#d35400">orb</span>    -<span style="color:#8a7b52">0x2a</span>(<span style="color:#434f54">%rbp</span>), <span style="color:#434f54">%r10b</span>
-    <span style="color:#d35400">addq</span>   <span style="color:#434f54">%r8</span>,         <span style="color:#434f54">%rcx</span>
-    <span style="color:#d35400">movzbl</span> <span style="color:#434f54">%r10b</span>,       <span style="color:#434f54">%ecx</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">%rsi</span>,        <span style="color:#434f54">%rcx</span>
-    <span style="color:#d35400">setb</span>   <span style="color:#434f54">%al</span>
-    <span style="color:#d35400">addq</span>   <span style="color:#434f54">%r12</span>,        <span style="color:#434f54">%rcx</span>
-    <span style="color:#d35400">setb</span>   <span style="color:#434f54">%r8b</span>
-    <span style="color:#d35400">orb</span>    <span style="color:#434f54">%al</span>,         <span style="color:#434f54">%r8b</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%r14</span>,        <span style="color:#434f54">%rax</span>
-    <span style="color:#d35400">movq</span>   -<span style="color:#8a7b52">0x48</span>(<span style="color:#434f54">%rbp</span>), <span style="color:#434f54">%r14</span>
-    <span style="color:#d35400">mulq</span>   <span style="color:#434f54">%r14</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rdx</span>,        <span style="color:#434f54">%r10</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rax</span>,        <span style="color:#434f54">%rsi</span>
-    <span style="color:#d35400">addq</span>   <span style="color:#434f54">%rcx</span>,        <span style="color:#434f54">%rsi</span>
-    <span style="color:#d35400">movzbl</span> <span style="color:#434f54">%r8b</span>,        <span style="color:#434f54">%eax</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">%rax</span>,        <span style="color:#434f54">%r10</span>
-    <span style="color:#d35400">addq</span>   <span style="color:#434f54">%rbx</span>,        <span style="color:#434f54">%rsi</span>
-    <span style="color:#d35400">setb</span>   <span style="color:#434f54">%cl</span>
-    <span style="color:#d35400">orb</span>    <span style="color:#434f54">%r13b</span>,       <span style="color:#434f54">%cl</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%r15</span>,        <span style="color:#434f54">%rax</span>
-    <span style="color:#d35400">mulq</span>   -<span style="color:#8a7b52">0x40</span>(<span style="color:#434f54">%rbp</span>)
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rdx</span>,        <span style="color:#434f54">%rbx</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rax</span>,        <span style="color:#434f54">%r8</span>
-    <span style="color:#d35400">addq</span>   <span style="color:#434f54">%rsi</span>,        <span style="color:#434f54">%r8</span>
-    <span style="color:#d35400">movzbl</span> <span style="color:#434f54">%cl</span>,         <span style="color:#434f54">%eax</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">%rax</span>,        <span style="color:#434f54">%rbx</span>
-    <span style="color:#d35400">setb</span>   <span style="color:#434f54">%al</span>
-    <span style="color:#d35400">addq</span>   <span style="color:#434f54">%r10</span>,        <span style="color:#434f54">%rbx</span>
-    <span style="color:#d35400">setb</span>   <span style="color:#434f54">%cl</span>
-    <span style="color:#d35400">orb</span>    <span style="color:#434f54">%al</span>,         <span style="color:#434f54">%cl</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%r15</span>,        <span style="color:#434f54">%rax</span>
-    <span style="color:#d35400">mulq</span>   <span style="color:#434f54">%r14</span>
-    <span style="color:#d35400">addq</span>   <span style="color:#434f54">%rbx</span>,        <span style="color:#434f54">%rax</span>
-    <span style="color:#d35400">movzbl</span> <span style="color:#434f54">%cl</span>,         <span style="color:#434f54">%ecx</span>
-    <span style="color:#d35400">adcq</span>   <span style="color:#434f54">%rcx</span>,        <span style="color:#434f54">%rdx</span>
-    <span style="color:#d35400">movq</span>   -<span style="color:#8a7b52">0x70</span>(<span style="color:#434f54">%rbp</span>), <span style="color:#434f54">%rcx</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rcx</span>,        (<span style="color:#434f54">%rdi</span>)
-    <span style="color:#d35400">movq</span>   -<span style="color:#8a7b52">0x68</span>(<span style="color:#434f54">%rbp</span>), <span style="color:#434f54">%rcx</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rcx</span>,        <span style="color:#8a7b52">0x8</span>(<span style="color:#434f54">%rdi</span>)
-    <span style="color:#d35400">movq</span>   -<span style="color:#8a7b52">0x60</span>(<span style="color:#434f54">%rbp</span>), <span style="color:#434f54">%rcx</span>
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rcx</span>,        <span style="color:#8a7b52">0x10</span>(<span style="color:#434f54">%rdi</span>)
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%r11</span>,        <span style="color:#8a7b52">0x18</span>(<span style="color:#434f54">%rdi</span>)
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%r9</span>,         <span style="color:#8a7b52">0x20</span>(<span style="color:#434f54">%rdi</span>)
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%r8</span>,         <span style="color:#8a7b52">0x28</span>(<span style="color:#434f54">%rdi</span>)
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rax</span>,        <span style="color:#8a7b52">0x30</span>(<span style="color:#434f54">%rdi</span>)
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rdx</span>,        <span style="color:#8a7b52">0x38</span>(<span style="color:#434f54">%rdi</span>)
-    <span style="color:#d35400">movq</span>   <span style="color:#434f54">%rdi</span>,        <span style="color:#434f54">%rax</span>
-    <span style="color:#d35400">addq</span>   <span style="color:#434f54">$0x48</span>,       <span style="color:#434f54">%rsp</span>
-    <span style="color:#d35400">popq</span>   <span style="color:#434f54">%rbx</span>
-    <span style="color:#d35400">popq</span>   <span style="color:#434f54">%r12</span>
-    <span style="color:#d35400">popq</span>   <span style="color:#434f54">%r13</span>
-    <span style="color:#d35400">popq</span>   <span style="color:#434f54">%r14</span>
-    <span style="color:#d35400">popq</span>   <span style="color:#434f54">%r15</span>
-    <span style="color:#d35400">popq</span>   <span style="color:#434f54">%rbp</span>
-    <span style="color:#d35400">retq</span>   </code></pre></div>
+    <span class="c">;; The rest of the code doesn&#39;t have any new tricks, just the same
+</span><span class="c"></span>    <span class="c">;; ones repeated.
+</span><span class="c"></span>    <span class="nf">adcq</span>   <span class="nv">%rcx</span><span class="p">,</span>        <span class="nv">%r13</span>
+    <span class="nf">pushfq</span> 
+    <span class="no">popq</span>   <span class="nv">%rcx</span>
+    <span class="nf">addq</span>   <span class="nv">%rax</span><span class="p">,</span>        <span class="nv">%r13</span>
+    <span class="nf">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>        <span class="nv">%rsi</span>
+    <span class="nf">pushq</span>  <span class="nv">%rcx</span>
+    <span class="nf">popfq</span>  
+    <span class="no">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>        <span class="nv">%rsi</span>
+    <span class="nf">setb</span>   <span class="p">-</span><span class="mi">0x2a</span><span class="p">(</span><span class="nv">%rbp</span><span class="p">)</span>
+    <span class="nf">orb</span>    <span class="p">-</span><span class="mi">0x29</span><span class="p">(</span><span class="nv">%rbp</span><span class="p">),</span> <span class="nv">%r10b</span>
+    <span class="nf">addq</span>   <span class="nv">%r12</span><span class="p">,</span>        <span class="nv">%rbx</span>
+    <span class="nf">movzbl</span> <span class="nv">%r10b</span><span class="p">,</span>       <span class="nv">%ebx</span>
+    <span class="nf">adcq</span>   <span class="nv">%r8</span><span class="p">,</span>         <span class="nv">%rbx</span>
+    <span class="nf">setb</span>   <span class="nv">%al</span>
+    <span class="nf">movq</span>   <span class="p">-</span><span class="mi">0x50</span><span class="p">(</span><span class="nv">%rbp</span><span class="p">),</span> <span class="nv">%rcx</span>
+    <span class="nf">pushq</span>  <span class="nv">%rcx</span>
+    <span class="nf">popfq</span>  
+    <span class="no">adcq</span>   <span class="p">-</span><span class="mi">0x58</span><span class="p">(</span><span class="nv">%rbp</span><span class="p">),</span> <span class="nv">%rbx</span>
+    <span class="nf">setb</span>   <span class="nv">%r8b</span>
+    <span class="nf">orb</span>    <span class="nv">%al</span><span class="p">,</span>         <span class="nv">%r8b</span>
+    <span class="nf">movq</span>   <span class="nv">%r15</span><span class="p">,</span>        <span class="nv">%rax</span>
+    <span class="nf">mulq</span>   <span class="p">-</span><span class="mi">0x48</span><span class="p">(</span><span class="nv">%rbp</span><span class="p">)</span>
+    <span class="nf">movq</span>   <span class="nv">%rdx</span><span class="p">,</span>        <span class="nv">%r12</span>
+    <span class="nf">movq</span>   <span class="nv">%rax</span><span class="p">,</span>        <span class="nv">%rcx</span>
+    <span class="nf">addq</span>   <span class="nv">%rbx</span><span class="p">,</span>        <span class="nv">%rcx</span>
+    <span class="nf">movzbl</span> <span class="nv">%r8b</span><span class="p">,</span>        <span class="nv">%eax</span>
+    <span class="nf">adcq</span>   <span class="nv">%rax</span><span class="p">,</span>        <span class="nv">%r12</span>
+    <span class="nf">addq</span>   <span class="nv">%rsi</span><span class="p">,</span>        <span class="nv">%rcx</span>
+    <span class="nf">setb</span>   <span class="nv">%r10b</span>
+    <span class="nf">movq</span>   <span class="nv">%r14</span><span class="p">,</span>        <span class="nv">%rax</span>
+    <span class="nf">mulq</span>   <span class="p">-</span><span class="mi">0x40</span><span class="p">(</span><span class="nv">%rbp</span><span class="p">)</span>
+    <span class="nf">movq</span>   <span class="nv">%rax</span><span class="p">,</span>        <span class="nv">%r8</span>
+    <span class="nf">movq</span>   <span class="nv">%rdx</span><span class="p">,</span>        <span class="nv">%rsi</span>
+    <span class="nf">movq</span>   <span class="mi">0x48</span><span class="p">(</span><span class="nv">%rbp</span><span class="p">),</span>  <span class="nv">%r15</span>
+    <span class="nf">movq</span>   <span class="nv">%r15</span><span class="p">,</span>        <span class="nv">%rax</span>
+    <span class="nf">mulq</span>   <span class="nv">%r11</span>
+    <span class="nf">movq</span>   <span class="nv">%rdx</span><span class="p">,</span>        <span class="nv">%r9</span>
+    <span class="nf">movq</span>   <span class="nv">%rax</span><span class="p">,</span>        <span class="nv">%r11</span>
+    <span class="nf">movq</span>   <span class="nv">%r15</span><span class="p">,</span>        <span class="nv">%rax</span>
+    <span class="nf">mulq</span>   <span class="p">-</span><span class="mi">0x38</span><span class="p">(</span><span class="nv">%rbp</span><span class="p">)</span>
+    <span class="nf">movq</span>   <span class="nv">%rdx</span><span class="p">,</span>        <span class="nv">%rbx</span>
+    <span class="nf">addq</span>   <span class="nv">%r13</span><span class="p">,</span>        <span class="nv">%r11</span>
+    <span class="nf">leaq</span>   <span class="p">(</span><span class="nv">%r8</span><span class="p">,</span><span class="nv">%rcx</span><span class="p">),</span>  <span class="nv">%rdx</span>
+    <span class="nf">adcq</span>   <span class="nv">%rdx</span><span class="p">,</span>        <span class="nv">%r9</span>
+    <span class="nf">pushfq</span> 
+    <span class="no">popq</span>   <span class="nv">%rdx</span>
+    <span class="nf">addq</span>   <span class="nv">%rax</span><span class="p">,</span>        <span class="nv">%r9</span>
+    <span class="nf">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>        <span class="nv">%rbx</span>
+    <span class="nf">pushq</span>  <span class="nv">%rdx</span>
+    <span class="nf">popfq</span>  
+    <span class="no">adcq</span>   <span class="no">$0x0</span><span class="p">,</span>        <span class="nv">%rbx</span>
+    <span class="nf">setb</span>   <span class="nv">%r13b</span>
+    <span class="nf">orb</span>    <span class="p">-</span><span class="mi">0x2a</span><span class="p">(</span><span class="nv">%rbp</span><span class="p">),</span> <span class="nv">%r10b</span>
+    <span class="nf">addq</span>   <span class="nv">%r8</span><span class="p">,</span>         <span class="nv">%rcx</span>
+    <span class="nf">movzbl</span> <span class="nv">%r10b</span><span class="p">,</span>       <span class="nv">%ecx</span>
+    <span class="nf">adcq</span>   <span class="nv">%rsi</span><span class="p">,</span>        <span class="nv">%rcx</span>
+    <span class="nf">setb</span>   <span class="nv">%al</span>
+    <span class="nf">addq</span>   <span class="nv">%r12</span><span class="p">,</span>        <span class="nv">%rcx</span>
+    <span class="nf">setb</span>   <span class="nv">%r8b</span>
+    <span class="nf">orb</span>    <span class="nv">%al</span><span class="p">,</span>         <span class="nv">%r8b</span>
+    <span class="nf">movq</span>   <span class="nv">%r14</span><span class="p">,</span>        <span class="nv">%rax</span>
+    <span class="nf">movq</span>   <span class="p">-</span><span class="mi">0x48</span><span class="p">(</span><span class="nv">%rbp</span><span class="p">),</span> <span class="nv">%r14</span>
+    <span class="nf">mulq</span>   <span class="nv">%r14</span>
+    <span class="nf">movq</span>   <span class="nv">%rdx</span><span class="p">,</span>        <span class="nv">%r10</span>
+    <span class="nf">movq</span>   <span class="nv">%rax</span><span class="p">,</span>        <span class="nv">%rsi</span>
+    <span class="nf">addq</span>   <span class="nv">%rcx</span><span class="p">,</span>        <span class="nv">%rsi</span>
+    <span class="nf">movzbl</span> <span class="nv">%r8b</span><span class="p">,</span>        <span class="nv">%eax</span>
+    <span class="nf">adcq</span>   <span class="nv">%rax</span><span class="p">,</span>        <span class="nv">%r10</span>
+    <span class="nf">addq</span>   <span class="nv">%rbx</span><span class="p">,</span>        <span class="nv">%rsi</span>
+    <span class="nf">setb</span>   <span class="nv">%cl</span>
+    <span class="nf">orb</span>    <span class="nv">%r13b</span><span class="p">,</span>       <span class="nv">%cl</span>
+    <span class="nf">movq</span>   <span class="nv">%r15</span><span class="p">,</span>        <span class="nv">%rax</span>
+    <span class="nf">mulq</span>   <span class="p">-</span><span class="mi">0x40</span><span class="p">(</span><span class="nv">%rbp</span><span class="p">)</span>
+    <span class="nf">movq</span>   <span class="nv">%rdx</span><span class="p">,</span>        <span class="nv">%rbx</span>
+    <span class="nf">movq</span>   <span class="nv">%rax</span><span class="p">,</span>        <span class="nv">%r8</span>
+    <span class="nf">addq</span>   <span class="nv">%rsi</span><span class="p">,</span>        <span class="nv">%r8</span>
+    <span class="nf">movzbl</span> <span class="nv">%cl</span><span class="p">,</span>         <span class="nv">%eax</span>
+    <span class="nf">adcq</span>   <span class="nv">%rax</span><span class="p">,</span>        <span class="nv">%rbx</span>
+    <span class="nf">setb</span>   <span class="nv">%al</span>
+    <span class="nf">addq</span>   <span class="nv">%r10</span><span class="p">,</span>        <span class="nv">%rbx</span>
+    <span class="nf">setb</span>   <span class="nv">%cl</span>
+    <span class="nf">orb</span>    <span class="nv">%al</span><span class="p">,</span>         <span class="nv">%cl</span>
+    <span class="nf">movq</span>   <span class="nv">%r15</span><span class="p">,</span>        <span class="nv">%rax</span>
+    <span class="nf">mulq</span>   <span class="nv">%r14</span>
+    <span class="nf">addq</span>   <span class="nv">%rbx</span><span class="p">,</span>        <span class="nv">%rax</span>
+    <span class="nf">movzbl</span> <span class="nv">%cl</span><span class="p">,</span>         <span class="nv">%ecx</span>
+    <span class="nf">adcq</span>   <span class="nv">%rcx</span><span class="p">,</span>        <span class="nv">%rdx</span>
+    <span class="nf">movq</span>   <span class="p">-</span><span class="mi">0x70</span><span class="p">(</span><span class="nv">%rbp</span><span class="p">),</span> <span class="nv">%rcx</span>
+    <span class="nf">movq</span>   <span class="nv">%rcx</span><span class="p">,</span>        <span class="p">(</span><span class="nv">%rdi</span><span class="p">)</span>
+    <span class="nf">movq</span>   <span class="p">-</span><span class="mi">0x68</span><span class="p">(</span><span class="nv">%rbp</span><span class="p">),</span> <span class="nv">%rcx</span>
+    <span class="nf">movq</span>   <span class="nv">%rcx</span><span class="p">,</span>        <span class="mi">0x8</span><span class="p">(</span><span class="nv">%rdi</span><span class="p">)</span>
+    <span class="nf">movq</span>   <span class="p">-</span><span class="mi">0x60</span><span class="p">(</span><span class="nv">%rbp</span><span class="p">),</span> <span class="nv">%rcx</span>
+    <span class="nf">movq</span>   <span class="nv">%rcx</span><span class="p">,</span>        <span class="mi">0x10</span><span class="p">(</span><span class="nv">%rdi</span><span class="p">)</span>
+    <span class="nf">movq</span>   <span class="nv">%r11</span><span class="p">,</span>        <span class="mi">0x18</span><span class="p">(</span><span class="nv">%rdi</span><span class="p">)</span>
+    <span class="nf">movq</span>   <span class="nv">%r9</span><span class="p">,</span>         <span class="mi">0x20</span><span class="p">(</span><span class="nv">%rdi</span><span class="p">)</span>
+    <span class="nf">movq</span>   <span class="nv">%r8</span><span class="p">,</span>         <span class="mi">0x28</span><span class="p">(</span><span class="nv">%rdi</span><span class="p">)</span>
+    <span class="nf">movq</span>   <span class="nv">%rax</span><span class="p">,</span>        <span class="mi">0x30</span><span class="p">(</span><span class="nv">%rdi</span><span class="p">)</span>
+    <span class="nf">movq</span>   <span class="nv">%rdx</span><span class="p">,</span>        <span class="mi">0x38</span><span class="p">(</span><span class="nv">%rdi</span><span class="p">)</span>
+    <span class="nf">movq</span>   <span class="nv">%rdi</span><span class="p">,</span>        <span class="nv">%rax</span>
+    <span class="nf">addq</span>   <span class="no">$0x48</span><span class="p">,</span>       <span class="nv">%rsp</span>
+    <span class="nf">popq</span>   <span class="nv">%rbx</span>
+    <span class="nf">popq</span>   <span class="nv">%r12</span>
+    <span class="nf">popq</span>   <span class="nv">%r13</span>
+    <span class="nf">popq</span>   <span class="nv">%r14</span>
+    <span class="nf">popq</span>   <span class="nv">%r15</span>
+    <span class="nf">popq</span>   <span class="nv">%rbp</span>
+    <span class="nf">retq</span>   </code></pre></div>
 <p>Although there are a few more instructions in the LLVM-generated version, the slowest type of instruction (loads and stores) are minimised, it (for the most part) avoids redundant work and it applies many cheeky optimisations on top. The end result is that the code runs significantly faster.</p>
 
 <p>This is not the first time that a carefully-written Rust implementation has outperformed our assembly code - some months ago I rewrote the Rust implementations of addition and subtraction, making them outperform the assembly implementation by 20% and 15%, respectively. Those didn&rsquo;t require 128-bit arithmetic to beat the assembly (to get the full power of the hardware in Rust you only need <code>u64::checked_add</code>/<code>checked_sub</code>), although who knows - maybe in a future PR we&rsquo;ll use 128-bit arithmetic and see the speed improve further still.</p>

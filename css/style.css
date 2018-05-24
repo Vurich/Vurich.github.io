@@ -33,7 +33,7 @@ header,header.a{
         margin-left: 5.5rem;
         margin-right: 5.5rem;
     }
-    pre code {
+    pre {
         font-size: 12px;
     }
 }
@@ -222,14 +222,16 @@ a:hover {
 
 pre {
     font-family: monospace, monospace;
-    padding: 15px;
+    margin-left: 0.7em;
+    padding-left: 0.7em;
+    padding-right: 15px;
+    padding-top: 15px;
+    padding-bottom: 15px;
     margin-bottom: 20px;
     overflow: auto;
     line-height: 1.5;
-}
-
-pre code {
     font-size: 14px;
+    border-left: 3.5px solid #bbb;
 }
 
 code {
