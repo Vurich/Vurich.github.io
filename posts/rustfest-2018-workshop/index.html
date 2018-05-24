@@ -104,7 +104,7 @@
 <li>Ones that exercise real-world cases in confinement, this can help pinpoint where your code is choking.</li>
 </ol>
 
-<p>You can see where I added the benchmarks in <a href="https://github.com/Vurich/rustfest-perf-workshop/commit/f839ff3cd76343e7371eec73de61997fa000f1eb">this commit</a> in the sample code repo. I&rsquo;ve heavily commented the benchmarks so you can see my thinking, and I highly recommend you read the comments and the code in that commit to get an idea of what a decent benchmark suite looks like. It&rsquo;s not perfect, more and more-accurate benchmarks could be written, but the point is that our language has very few primitives (function calls, variables, assigment, literals) and so we need benchmarks that exercise each of those.</p>
+<p>You can see where I added the benchmarks in <a href="https://github.com/Vurich/rustfest-perf-workshop/commit/f839ff3cd76343e7371eec73de61997fa000f1eb">this commit</a> in the sample code repo. I&rsquo;ve heavily commented the benchmarks so you can see my thinking, and I highly recommend you read the comments and the code in that commit to get an idea of what a decent benchmark suite looks like. It&rsquo;s not perfect, more and better benchmarks could be written, but the point is that our language has very few primitives (function calls, variables, assigment, literals) and so we need benchmarks that exercise each of those.</p>
 
 <p>Probably you already know [how to run benchmarks in Rust][benchmarks], but doing so isn&rsquo;t actually terribly useful in isolation. Benchmarks alone are essentially meaningless, since they are affected by everything from the current PC setup to the other currently-running programs. Their power comes in comparison.</p>
 
