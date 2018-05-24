@@ -58,16 +58,16 @@
 &lt;p&gt;If you haven&amp;rsquo;t already, you need to make sure that you&amp;rsquo;re using the nightly release of Rust, since the stable release doesn&amp;rsquo;t allow you to run benchmarks. If you&amp;rsquo;re using &lt;a href=&#34;https://rustup.rs/&#34;&gt;&lt;code&gt;rustup&lt;/code&gt;&lt;/a&gt;, this is simple - just do &lt;code&gt;rustup override set nightly&lt;/code&gt;. If you&amp;rsquo;re not using &lt;code&gt;rustup&lt;/code&gt;, then use &lt;code&gt;rustup&lt;/code&gt;. Sorry, it&amp;rsquo;s really the only convenient way to use nightly Rust.&lt;/p&gt;
 
 &lt;p&gt;To get a baseline benchmark, you can output the results of &lt;code&gt;cargo bench&lt;/code&gt; to a file. On Linux and macOS you can just run &lt;code&gt;cargo bench &amp;gt; baseline.bench&lt;/code&gt;. On each change you can output the new benchmarks to a new file by running &lt;code&gt;cargo bench &amp;gt; new.bench&lt;/code&gt;, then compare the two with &lt;code&gt;cargo benchcmp baseline.bench new.bench&lt;/code&gt;. If you do it now, without making any changes, you should get something that looks like the following:&lt;/p&gt;
-&lt;div class=&#34;highlight&#34;&gt;&lt;pre class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-text&#34; data-lang=&#34;text&#34;&gt; name                           baseline.bench ns/iter  new.bench ns/iter  diff ns/iter  diff %  speedup 
- benches::parse_deep_nesting    52,923                  53,618                      695   1.31%   x 0.99 
- benches::parse_literals        34,167                  34,623                      456   1.33%   x 0.99 
- benches::parse_many_variables  182,052                 180,939                  -1,113  -0.61%   x 1.01 
- benches::parse_nested_func     36,798                  37,222                      424   1.15%   x 0.99 
- benches::parse_real_code       4,578                   4,574                        -4  -0.09%   x 1.00 
- benches::run_deep_nesting      2,705                   2,722                        17   0.63%   x 0.99 
- benches::run_many_variables    42,622                  42,193                     -429  -1.01%   x 1.01 
- benches::run_nested_func       4,563                   4,698                       135   2.96%   x 0.97 
- benches::run_real_code         141,153                 141,211                      58   0.04%   x 1.00 &lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-text&#34; data-lang=&#34;text&#34;&gt;name                           baseline.bench ns/iter  new.bench ns/iter  diff ns/iter  diff %  speedup 
+benches::parse_deep_nesting    52,923                  53,618                      695   1.31%   x 0.99 
+benches::parse_literals        34,167                  34,623                      456   1.33%   x 0.99 
+benches::parse_many_variables  182,052                 180,939                  -1,113  -0.61%   x 1.01 
+benches::parse_nested_func     36,798                  37,222                      424   1.15%   x 0.99 
+benches::parse_real_code       4,578                   4,574                        -4  -0.09%   x 1.00 
+benches::run_deep_nesting      2,705                   2,722                        17   0.63%   x 0.99 
+benches::run_many_variables    42,622                  42,193                     -429  -1.01%   x 1.01 
+benches::run_nested_func       4,563                   4,698                       135   2.96%   x 0.97 
+benches::run_real_code         141,153                 141,211                      58   0.04%   x 1.00 &lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
 &lt;p&gt;You&amp;rsquo;ll notice that even when you run the exact same code twice you can still get slightly different results. You shouldn&amp;rsquo;t trust speedups of less than 2% unless you can very reliably reproduce them.&lt;/p&gt;
 
 &lt;p&gt;So, where do we start? Well, that&amp;rsquo;s what our trusty friend Valgrind is for. Valgrind is an execution framework that allows plugins to analyse a compiled program at quite a deep level. It ships with tools to &lt;a href=&#34;http://valgrind.org/docs/manual/mc-manual.html&#34;&gt;detect memory safety bugs&lt;/a&gt;, to &lt;a href=&#34;http://valgrind.org/docs/manual/hg-manual.html&#34;&gt;report possible deadlocks and race conditions&lt;/a&gt; and - most importantly for us - to &lt;a href=&#34;http://valgrind.org/docs/manual/cl-manual.html&#34;&gt;analyse the time taken by individual functions&lt;/a&gt;. It can&amp;rsquo;t produce output that&amp;rsquo;s very useful to humans without some help, however. Specifically, it needs debuginfo enabled. For release builds (&lt;code&gt;cargo build --release&lt;/code&gt;) you can add that to the &lt;code&gt;Cargo.toml&lt;/code&gt; like so:&lt;/p&gt;
