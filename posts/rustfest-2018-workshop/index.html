@@ -25,7 +25,7 @@
     <script async>
         window.onload = function() {
             var possibilities = [
-                 "A high-level view of low-level code",  "Writing words and reading DWORDS",  "A blog about bits and the frobbing thereof", 
+                 "A high-level view of low-level code",  "Writing words and reading DWORDS", 
             ];
 
             document.getElementById('subtitle').innerHTML = possibilities[Math.floor(possibilities.length * Math.random())];
@@ -129,7 +129,7 @@ benches::run_real_code         141,153                 141,211                  
 <div class="highlight"><pre class="chroma"><code class="language-toml" data-lang="toml"><span class="p">[</span><span class="nx">profile</span><span class="p">.</span><span class="nx">release</span><span class="p">]</span>
 <span class="nx">debug</span> <span class="p">=</span> <span class="kc">true</span></code></pre></div>
 <p>We need it for benchmarks, however. For that <code>cargo</code> uses the <code>bench</code> profile, and so we need to add the following to <code>Cargo.toml</code>:</p>
-<div class="highlight"><pre class="chroma"><code class="language-toml" data-lang="toml"><span class="p">[</span><span class="nx">profile</span><span class="p">.</span><span class="nx">debug</span><span class="p">]</span>
+<div class="highlight"><pre class="chroma"><code class="language-toml" data-lang="toml"><span class="p">[</span><span class="nx">profile</span><span class="p">.</span><span class="nx">bench</span><span class="p">]</span>
 <span class="nx">debug</span> <span class="p">=</span> <span class="kc">true</span></code></pre></div>
 <p>This is added to the sample project already (see <a href="https://github.com/Vurich/rustfest-perf-workshop/commit/24a8fab60674dbc70b2ad18df8baba3e2edace65">this commit</a>). If you run <code>cargo bench</code> it will first build the benchmarking binary and then run it, displaying the path on stdout. When I run <code>cargo bench</code> it looks like this:</p>
 <div class="highlight"><pre class="chroma"><code class="language-text" data-lang="text">jef@jef-pc ~/D/G/V/rustfest&gt; cargo bench
