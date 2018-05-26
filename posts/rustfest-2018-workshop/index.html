@@ -249,7 +249,7 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 9 measured; 0 filtered out</code
 
 <h2 id="intermediate-1">Intermediate</h2>
 
-<p>What other clones are unnecessary? Most of our code is pure and only requires immutable access. However, we still clone the <code>Value</code>s in our scope every time we access them. Is there a way around this?</p>
+<p>What other clones are unnecessary? Most of our code is pure and only requires immutable access to, for example, <code>Value</code>s.</p>
 
 <h2 id="advanced-1">Advanced</h2>
 
@@ -285,7 +285,7 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 9 measured; 0 filtered out</code
 </span><span class="w">        </span><span class="nb">None</span><span class="w">
 </span><span class="w">    </span><span class="p">}</span><span class="w">
 </span><span class="w"></span><span class="p">}</span></code></pre></div>
-<p>If you&rsquo;re an attacker trying to take down this innocent flapjack website and you can manipulate which bucket your customer name goes into, you can simply put all of your entries into the <em>same</em> bucket. This means that every new insertion or retreival to that one bucket is extremely slow, because it has to do much more comparisons than you normally would have to. The default <code>HashMap</code> used in Rust has two defences against this. Firstly, it initialises the hashing algorithm with a random seed, which means that because you don&rsquo;t know the initial hasher state you can&rsquo;t run the hashing algorithm many times on your own computer, find some customer names that would go into the same bucket, and then send those to the server. Second, the hashing algorithm is cryptographically secure. This means that there is no way to guess the initial state by just running the hasher many times, measuring how the output changes, and then deriving the state with maths. The default hashing algorithm is actually pretty fast, but is bad on small keys (like the short variable names in our programs). To improve performance we can use <code>FnvHash</code> from the <a href="https://crates.io/crates/fnv"><code>fnv</code></a> crate.</p>
+<p>If you&rsquo;re an attacker trying to take down this innocent flapjack website and you can work out a way to generate a customer name that will go into a specific bucket, you can simply generate entries that all go into the <em>same</em> bucket. This means that every new insertion or retreival to that one bucket is extremely slow, because it has to do much more comparisons than you normally would have to. The default <code>HashMap</code> used in Rust has two defences against this. Firstly, it initialises the hashing algorithm with a random seed, which means that because you don&rsquo;t know the initial hasher state you can&rsquo;t run the hashing algorithm many times on your own computer, find some customer names that would go into the same bucket, and then send those to the server. Second, the hashing algorithm is cryptographically secure. This means that there is no way to guess the initial state by just running the hasher many times, measuring how the output changes, and then deriving the state with maths. The default hashing algorithm is actually pretty fast, but is bad on small keys (like the short variable names in our programs). To improve performance we can use <code>FnvHash</code> from the <a href="https://crates.io/crates/fnv"><code>fnv</code></a> crate.</p>
 
 <h2 id="beginner-2">Beginner</h2>
 
