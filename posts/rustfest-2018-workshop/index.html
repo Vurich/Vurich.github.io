@@ -216,7 +216,7 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 9 measured; 0 filtered out</code
 
 <h2 id="advanced">Advanced</h2>
 
-<p>Do these strings need to be allocated on the heap at all? Combine actually has <a href="https://docs.rs/combine/3.3.0/combine/parser/range/fn.recognize.html">an API for zero-copy parsing</a>. It requires ensuring that the input can have pointers constructed to it - not possible if you&rsquo;re parsing from an iterator over bytes, for example. To ensure this you can add the following to the parser definition:</p>
+<p>Do these strings need to be allocated on the heap at all? Combine actually has <a href="https://docs.rs/combine/3.3.0/combine/parser/range/index.html">an API for zero-copy parsing</a>. It requires ensuring that the input can have pointers constructed to it - not possible if you&rsquo;re parsing from an iterator over bytes, for example. To ensure this you can add the following to the parser definition:</p>
 <div class="highlight"><pre class="chroma"><code class="language-diff" data-lang="diff"><span class="gh">diff --git a/src/lib.rs b/src/lib.rs
 </span><span class="gh">index 359915d..6db1190 100644
 </span><span class="gh"></span><span class="gd">--- a/src/lib.rs

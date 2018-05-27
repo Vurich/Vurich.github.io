@@ -161,7 +161,7 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 9 measured; 0 filtered out&lt;/c
 
 &lt;h2 id=&#34;advanced&#34;&gt;Advanced&lt;/h2&gt;
 
-&lt;p&gt;Do these strings need to be allocated on the heap at all? Combine actually has &lt;a href=&#34;https://docs.rs/combine/3.3.0/combine/parser/range/fn.recognize.html&#34;&gt;an API for zero-copy parsing&lt;/a&gt;. It requires ensuring that the input can have pointers constructed to it - not possible if you&amp;rsquo;re parsing from an iterator over bytes, for example. To ensure this you can add the following to the parser definition:&lt;/p&gt;
+&lt;p&gt;Do these strings need to be allocated on the heap at all? Combine actually has &lt;a href=&#34;https://docs.rs/combine/3.3.0/combine/parser/range/index.html&#34;&gt;an API for zero-copy parsing&lt;/a&gt;. It requires ensuring that the input can have pointers constructed to it - not possible if you&amp;rsquo;re parsing from an iterator over bytes, for example. To ensure this you can add the following to the parser definition:&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;pre class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-diff&#34; data-lang=&#34;diff&#34;&gt;&lt;span class=&#34;gh&#34;&gt;diff --git a/src/lib.rs b/src/lib.rs
 &lt;/span&gt;&lt;span class=&#34;gh&#34;&gt;index 359915d..6db1190 100644
 &lt;/span&gt;&lt;span class=&#34;gh&#34;&gt;&lt;/span&gt;&lt;span class=&#34;gd&#34;&gt;--- a/src/lib.rs
