@@ -31,7 +31,7 @@
 
 &lt;ul&gt;
 &lt;li&gt;You&amp;rsquo;ll need &lt;a href=&#34;https://www.rust-lang.org/&#34;&gt;Rust&lt;/a&gt; to compile the code, of course. You should use &lt;a href=&#34;http://rustup.rs/&#34;&gt;Rustup&lt;/a&gt; to install Rust so that you can use the &lt;a href=&#34;https://doc.rust-lang.org/1.15.1/book/nightly-rust.html&#34;&gt;nightly build&lt;/a&gt; - right now, stable still doesn&amp;rsquo;t support benchmarks.&lt;/li&gt;
-&lt;li&gt;The sample code for this is &lt;a href=&#34;https://github.com/Vurich/rustfest-perf-workshop&#34;&gt;here&lt;/a&gt;.&lt;/li&gt;
+&lt;li&gt;You need to clone the &lt;a href=&#34;https://github.com/Vurich/rustfest-perf-workshop&#34;&gt;sample code&lt;/a&gt;. This is the code that we&amp;rsquo;ll benchmark and optimise.&lt;/li&gt;
 &lt;li&gt;To compare results we can use &lt;code&gt;cargo-benchcmp&lt;/code&gt;, just run &lt;code&gt;cargo install cargo-benchcmp&lt;/code&gt; to get it.&lt;/li&gt;
 &lt;li&gt;To generate performance traces you&amp;rsquo;ll need &lt;a href=&#34;http://valgrind.org/&#34;&gt;Valgrind&lt;/a&gt;, this requires macOS or Linux. If you&amp;rsquo;re on Windows then you can use my Valgrind traces, see below.&lt;/li&gt;
 &lt;li&gt;To view the results you can use &lt;a href=&#34;https://kcachegrind.github.io/html/Home.html&#34;&gt;KCachegrind&lt;/a&gt;. On macOS you can use the Qt version, called &amp;ldquo;QCachegrind&amp;rdquo;. The app is the same, it&amp;rsquo;ll just look slightly different.&lt;/li&gt;
