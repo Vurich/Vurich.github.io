@@ -89,7 +89,7 @@
 <li>The sample code for this is <a href="https://github.com/Vurich/rustfest-perf-workshop">here</a>.</li>
 <li>To compare results we can use <code>cargo-benchcmp</code>, just run <code>cargo install cargo-benchcmp</code> to get it.</li>
 <li>To generate performance traces you&rsquo;ll need <a href="http://valgrind.org/">Valgrind</a>, this requires macOS or Linux. If you&rsquo;re on Windows then you can use my Valgrind traces, see below.</li>
-<li>To view the results you can use <a href="https://kcachegrind.github.io/html/Home.html">KCachegrind</a>.</li>
+<li>To view the results you can use <a href="https://kcachegrind.github.io/html/Home.html">KCachegrind</a>. On macOS you can use the Qt version, called &ldquo;QCachegrind&rdquo;. The app is the same, it&rsquo;ll just look slightly different.</li>
 </ul>
 
 <p>You&rsquo;ll probably have seen <code>perf</code>+<code>flamegraph</code> recommended before by <a href="http://troubles.md/posts/rust-optimization/">certain very smart and handsome fellows</a> but I&rsquo;ve actually had more luck with callgrind (included in Valgrind). You can try to use <code>perf</code> but although it can give very good outputs for some programs it&rsquo;s quite inconsistent. Also, using callgrind means you can use KCachegrind, which is the best thing since sliced bread. In the linked article I said that Valgrind was scary, but that was one of my patented Uninformed Opinions&trade;. It&rsquo;s actually very intuitive and, honestly, easier to use than the &ldquo;simple&rdquo; solution of using <code>perf</code>. I&rsquo;ll go into more detail about how to use callgrind later on.</p>
