@@ -4,19 +4,19 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     
-    <title>What is Substrate?</title>
+    <title>What is Parity Substrate?</title>
     
     <meta name="description" content="">
     
-    <meta itemprop="name" content="What is Substrate?">
+    <meta itemprop="name" content="What is Parity Substrate?">
     
     
-    <meta name="og:title" content="What is Substrate?">
+    <meta name="og:title" content="What is Parity Substrate?">
     
         <meta name="image" content="http://troubles.md/floppies.png">
         <meta name="og:image" content="http://troubles.md/floppies.png">
        <meta name="og:url" content="http://troubles.md/posts/what-is-substrate/">
-    <meta name="og:site_name" content="What is Substrate?">
+    <meta name="og:site_name" content="What is Parity Substrate?">
     <meta name="og:type" content="article">
     
     <meta name="article:tag" content="">
@@ -71,12 +71,12 @@
 
 
 <div class="content">
-  <h1>What is Substrate? <aside></aside></h1>
+  <h1>What is Parity Substrate? <aside></aside></h1>
   <div class="spon">This post was sponsored by my employer, <a href="http://paritytech.io/">Parity Technologies</a></div>
 
 <p>If you&rsquo;ve followed any of Polkadot&rsquo;s development, you will probably have seen &ldquo;Substrate&rdquo; mentioned many times. It&rsquo;s an important component of the Polkadot project but information on it is very thin on the ground. It&rsquo;s not in the whitepaper or the yellow paper - or at least, not under the name &ldquo;Substrate&rdquo; - and the specification for it is still in heavy flux. At a high level, it&rsquo;s a framework for creating cryptocurrencies and other decentralised systems using the latest research in blockchain technology. That&rsquo;s not very helpful, though. At least, it&rsquo;s not very helpful for me.</p>
 
-<p>I think the most important part of understanding Substrate is that it is not part of Polkadot at all. Although Polkadot is built with Substrate and projects built with Substrate can run natively on Polkadot, you can use Substrate to build new blockchains right now. You don&rsquo;t need to wait for Polkadot to be finished or even for a proof-of-concept to be released to start working on a blockchain using this framework.</p>
+<p>I think the most important part of understanding Parity Substrate is that it is not part of Polkadot at all. Although Polkadot is built with Substrate and projects built with Substrate can run natively on Polkadot, you can use Substrate to build new blockchains right now. You don&rsquo;t need to wait for Polkadot to be finished or even for a proof-of-concept to be released to start working on a blockchain using this framework.</p>
 
 <p>So what is Substrate? You can think of it as being like Express or another web application framework, but for building distributed or decentralised systems such as cryptocurrencies or a message bus. Just as most web applications shouldn&rsquo;t need to reimplement their own version of HTTP, we believe that it&rsquo;s wasted effort for every team creating a new blockchain to have to implement all the networking and consensus code from scratch. Not to mention the cryptographers, security researchers, networking engineers, devops personnel (to coordinate updates) and so on that would need to be hired and paid for when really your business logic is your product. If you want to build a new project using Substrate, all you have to do is implement a very small number of hooks in your code and then for free you get:</p>
 
@@ -90,7 +90,7 @@
 <li>The ability to immediately start running your project on Polkadot the moment it is released. Although projects built with Substrate can be compiled to use seperate clients per-project (like existing blockchains do), since Polkadot implements the Substrate API you can tap into the shared security and interopability that Polkadot provides. Polkadot is itself being built using Substrate, which allows us to get fast feedback on any holes in the framework and allows us to run a Polkadot testnet or even a second instance of Polkadot itself as a parachain. If you don&rsquo;t know about Polkadot or if you just haven&rsquo;t been sufficiently propagandised about its benefits, you can check out <a href="https://medium.com/polkadot-network/how-polkadot-tackles-the-biggest-problems-facing-blockchain-innovators-1affc1309b0f">this post on our blog</a>.</li>
 </ul>
 
-<p>So what don&rsquo;t you get for free? Essentially it&rsquo;s just your state machine, which includes things like transactions. To make Substrate as generic as possible, it has no transactions. Instead, it has what we call &ldquo;externalities&rdquo;, which are just binary blobs that you can use to store any data that you want. For most chains these externalities will include transactions, but of course you don&rsquo;t need to implement it that way! You could remove the concept of currency from the network entirely and use Substrate to create a decentralised Erlang-style actor-model concurrent system with a set of trusted authorities to verify the correct behaviour of the network. Assuming you do want currency and transactions, however, implementing the transaction format will likely be trivial - just an interchange format and a library to access that data from your chosen language. It&rsquo;s even easier than other distributed architectures like microservices - since the code and the data it operates on is stored in the same place, you don&rsquo;t need to enforce backwards-compatibility guarantees for transactions<sup class="footnote-ref" id="fnref:backwards-compat"><a href="#fn:backwards-compat">1</a></sup>, just for storage. For chains with private transactions the implementation may be more complex. The names of everything are not finalised and so you&rsquo;ll see different language used in different places, but here&rsquo;s a simple explanation of what you&rsquo;d need to implement in order to get a full blockchain up and running:</p>
+<p>So what don&rsquo;t you get for free? Essentially it&rsquo;s just your state machine, which includes things like transactions. To make Substrate as generic as possible, it has no transactions. Instead, it has what we call &ldquo;extrinsics&rdquo;, which are just binary blobs that you can use to store any data that you want. For most chains these extrinsics will include transactions, but of course you don&rsquo;t need to implement it that way! You could remove the concept of currency from the network entirely and use Substrate to create a decentralised Erlang-style actor-model concurrent system with a set of trusted authorities to verify the correct behaviour of the network. Assuming you do want currency and transactions, however, implementing the transaction format will likely be trivial - just an interchange format and a library to access that data from your chosen language. It&rsquo;s even easier than other distributed architectures like microservices - since the code and the data it operates on is stored in the same place, you don&rsquo;t need to enforce backwards-compatibility guarantees for transactions<sup class="footnote-ref" id="fnref:backwards-compat"><a href="#fn:backwards-compat">1</a></sup>, just for storage. For chains with private transactions the implementation may be more complex. The names of everything are not finalised and so you&rsquo;ll see different language used in different places, but here&rsquo;s a simple explanation of what you&rsquo;d need to implement in order to get a full blockchain up and running:</p>
 
 <ul>
 <li>A function that creates a new pending block based on the previous block&rsquo;s header. The header includes:
@@ -100,14 +100,14 @@
 <li>A &ldquo;cryptographic commitment&rdquo; to the block&rsquo;s state, this is important for light clients to validate that the block is correct. A cryptographic commitment serves the same role as a hash, you cannot change the state without invalidating the commitment;</li>
 <li>A cryptographic commitment to all the extrinsics in the body, which prevents the extrinsics from being changed;</li>
 <li>A hash of the block&rsquo;s parent;</li>
-<li>Some extra arbitrary data. One usecase for this data would be for client updates - since light clients only sync headers, if you want to update them you can&rsquo;t have updates implemented as an externality or the light clients won&rsquo;t receive them.</li>
+<li>Some extra arbitrary data. One usecase for this data would be for client updates - since light clients only sync headers, if you want to update them you can&rsquo;t have updates implemented as an extrinsic or the light clients won&rsquo;t receive them.</li>
 </ul></li>
-<li>A function that adds an externality (such as a transaction) to a pending block. This should also update the chain&rsquo;s state (for example, account balances);</li>
+<li>A function that adds an extrinsic (such as a transaction) to a pending block. This should also update the chain&rsquo;s state (for example, account balances);</li>
 <li>A function that takes a pending block and generates a finished block from it. This finished block can then be propagated throughout the network;</li>
 <li>A function that executes an existing block. This is run by full nodes to confirm that received blocks are valid before accepting them. For example, in a value-bearing chain you could check that no-one tries to transfer more than their balance.</li>
 </ul>
 
-<p>One downside of this design is that you have to manually make sure that the state transitions done while creating a block and the state transitions done while executing an existing block are kept in sync. If you don&rsquo;t do this, you could get consensus issues! This may change in the future, but for now this shouldn&rsquo;t be much of a problem in practice as you will likely delegate the executing of externalities to a common function.</p>
+<p>One downside of this design is that you have to manually make sure that the state transitions done while creating a block and the state transitions done while executing an existing block are kept in sync. If you don&rsquo;t do this, you could get consensus issues! This may change in the future, but for now this shouldn&rsquo;t be much of a problem in practice as you will likely delegate the executing of extrinsics to a common function.</p>
 
 <p>Additionally, you need to provide a validator set. This covers both proof-of-authority and proof-of-stake/delegated proof-of-stake chains, although we have no intention to support proof-of-work chains in Substrate as of now. The validator set is a list of public keys whose corresponding private keys should be considered valid to sign a given block. The set can change, but each block is validated by the set that was chosen at the time of the block&rsquo;s creation. You don&rsquo;t have to handle the difficult problem of handling the validators&rsquo; votes or even their &ldquo;vouching&rdquo; for individual blocks, that&rsquo;s handled by Substrate automatically. The validator set can be as large as you like, but there&rsquo;s a tradeoff to be made here. The less validators you have the easier it would be for them to collude, but the more validators that you have the more validators will be needed to validate any given block before it is considered &ldquo;finalised&rdquo; (i.e. unrevertable)<sup class="footnote-ref" id="fnref:finality"><a href="#fn:finality">2</a></sup>.</p>
 
