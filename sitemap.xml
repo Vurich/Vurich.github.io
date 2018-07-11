@@ -3,11 +3,6 @@
   xmlns:xhtml="http://www.w3.org/1999/xhtml">
   
   <url>
-    <loc>http://troubles.md/posts/why-write-smart-contracts-in-rust/</loc>
-    <lastmod>2018-07-05T13:43:49+02:00</lastmod>
-  </url>
-  
-  <url>
     <loc>http://troubles.md/posts/what-is-substrate/</loc>
     <lastmod>2018-07-03T14:25:46+02:00</lastmod>
   </url>
@@ -54,7 +49,7 @@
   
   <url>
     <loc>http://troubles.md/posts/</loc>
-    <lastmod>2018-07-05T13:43:49+02:00</lastmod>
+    <lastmod>2018-07-03T14:25:46+02:00</lastmod>
     <priority>0</priority>
   </url>
   
@@ -65,7 +60,7 @@
   
   <url>
     <loc>http://troubles.md/</loc>
-    <lastmod>2018-07-05T13:43:49+02:00</lastmod>
+    <lastmod>2018-07-03T14:25:46+02:00</lastmod>
     <priority>0</priority>
   </url>
   
