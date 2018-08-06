@@ -19,6 +19,8 @@
       <guid>http://troubles.md/posts/comparison-of-inter-blockchain-communication-technologies/</guid>
       <description>
 
+&lt;div class=&#34;spon&#34;&gt;This post was sponsored by my employer, &lt;a href=&#34;http://paritytech.io/&#34;&gt;Parity Technologies&lt;/a&gt;&lt;/div&gt;
+
 &lt;p&gt;A question we often get asked about Polkadot is how it compares to other blockchain technologies that nominally share the same goal. Blockchain interoperability is rightfully a hot topic right now, with many projects large and small in development. Many people in the blockchain space have come to the realisation that the siloing off of different chains leads to sluggish innovation - since the security of a chain is directly proportional to the number of users it has, it&amp;rsquo;s hard for new chains to get off the ground even if they have many interesting and useful features. Plus, it means that if an application wants to leverage a certain currency it must either have a measure of centralisation or be built on the application platform offered by that currency. Interoperability can solve these problems by having some measure of shared security, and by allowing users to easily convert coins between chains in a secure way (without trusting a third party). Some of the larger projects in the space that are attempting to solve this problem:&lt;/p&gt;
 
 &lt;ul&gt;
