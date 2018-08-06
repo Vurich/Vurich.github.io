@@ -283,7 +283,8 @@ basic math. Let&rsquo;s assume a matrix backed by flat vector and a number of co
 </span><span class="w"></span><span class="k">struct</span> <span class="nc">Matrix</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span><span class="w">
 </span><span class="w">    </span><span class="n">data</span>: <span class="nb">Vec</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="p">,</span><span class="w">
 </span><span class="w">    </span><span class="n">num_columns</span>: <span class="kt">usize</span><span class="p">,</span><span class="w">
-</span><span class="w"></span><span class="p">}</span></code></pre></div>
+</span><span class="w"></span><span class="p">}</span><span class="w">
+</span><span class="w"></span></code></pre></div>
 <p>So a matrix with N rows and M columns needs <code>N * M * size_of::&lt;T&gt;()</code> space for
 the elements, plus <code>size_of::&lt;*mut T&gt;() + 3 * size_of::&lt;usize&gt;()</code> for the
 &ldquo;metadata&rdquo; (the vector&rsquo;s pointer and the <code>capacity</code>, <code>length</code> and <code>num_columns</code>
@@ -357,7 +358,8 @@ implement a single trait since it&rsquo;s basically type inference in a fancy ha
 good trick for when you want to allow a variable but finite number of
 implementors of a type because you want to choose between them or iterate over
 them, use either a tuple or a recursive generic struct like this:</p>
-<div class="highlight"><pre class="chroma"><code class="language-rust" data-lang="rust"><span class="k">struct</span> <span class="nc">Cons</span><span class="o">&lt;</span><span class="n">Head</span><span class="p">,</span><span class="w"> </span><span class="n">Tail</span><span class="o">&gt;</span><span class="p">(</span><span class="n">Head</span><span class="p">,</span><span class="w"> </span><span class="n">Tail</span><span class="p">);</span></code></pre></div>
+<div class="highlight"><pre class="chroma"><code class="language-rust" data-lang="rust"><span class="k">struct</span> <span class="nc">Cons</span><span class="o">&lt;</span><span class="n">Head</span><span class="p">,</span><span class="w"> </span><span class="n">Tail</span><span class="o">&gt;</span><span class="p">(</span><span class="n">Head</span><span class="p">,</span><span class="w"> </span><span class="n">Tail</span><span class="p">);</span><span class="w">
+</span><span class="w"></span></code></pre></div>
 <p>Since data structures in Rust don&rsquo;t add any indirection or space overhead, you
 can implement a trait for this structure recursively and have a function that
 can take any number of parameters that runs as fast as an equivalent function
@@ -369,7 +371,8 @@ look for a function that takes a list of functions and calls them:</p>
 </span><span class="w">    </span><span class="k">for</span><span class="w"> </span><span class="n">f</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="n">fns</span><span class="w"> </span><span class="p">{</span><span class="w">
 </span><span class="w">        </span><span class="n">f</span><span class="p">();</span><span class="w">
 </span><span class="w">    </span><span class="p">}</span><span class="w">
-</span><span class="w"></span><span class="p">}</span></code></pre></div>
+</span><span class="w"></span><span class="p">}</span><span class="w">
+</span><span class="w"></span></code></pre></div>
 <p>Allocation-free version:</p>
 <div class="highlight"><pre class="chroma"><code class="language-rust" data-lang="rust"><span class="k">struct</span> <span class="nc">Cons</span><span class="o">&lt;</span><span class="n">First</span><span class="p">,</span><span class="w"> </span><span class="n">Second</span><span class="o">&gt;</span><span class="p">(</span><span class="n">First</span><span class="p">,</span><span class="w"> </span><span class="n">Second</span><span class="p">);</span><span class="w">
 </span><span class="w">
@@ -400,7 +403,8 @@ look for a function that takes a list of functions and calls them:</p>
 </span><span class="w">
 </span><span class="w"></span><span class="k">fn</span> <span class="nf">call_all_fns_no_alloc</span><span class="o">&lt;</span><span class="n">T</span>: <span class="nc">Callable</span><span class="o">&gt;</span><span class="p">(</span><span class="n">fns</span>: <span class="nc">T</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">
 </span><span class="w">    </span><span class="n">fns</span><span class="p">.</span><span class="n">call</span><span class="p">();</span><span class="w">
-</span><span class="w"></span><span class="p">}</span></code></pre></div>
+</span><span class="w"></span><span class="p">}</span><span class="w">
+</span><span class="w"></span></code></pre></div>
 <p>Here&rsquo;s what they both look like in use:</p>
 <div class="highlight"><pre class="chroma"><code class="language-rust" data-lang="rust"><span class="k">fn</span> <span class="nf">main</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w">
 </span><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">first_fn</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">println</span><span class="o">!</span><span class="p">(</span><span class="s">&#34;Hello!&#34;</span><span class="p">);</span><span class="w"> </span><span class="p">};</span><span class="w">
@@ -412,7 +416,8 @@ look for a function that takes a list of functions and calls them:</p>
 </span><span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="n">second_fn</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">println</span><span class="o">!</span><span class="p">(</span><span class="s">&#34;World!&#34;</span><span class="p">);</span><span class="w"> </span><span class="p">};</span><span class="w">
 </span><span class="w">    
 </span><span class="w">    </span><span class="n">call_all_fns_no_alloc</span><span class="p">(</span><span class="n">first_fn</span><span class="p">.</span><span class="n">cons</span><span class="p">(</span><span class="n">second_fn</span><span class="p">));</span><span class="w">
-</span><span class="w"></span><span class="p">}</span></code></pre></div>
+</span><span class="w"></span><span class="p">}</span><span class="w">
+</span><span class="w"></span></code></pre></div>
 <p>The functions passed to <code>call_all_fns_no_alloc</code> are eligible for inlining, they
 require no space overhead, and their instructions and data are directly next to
 each other in memory and are therefore much faster to access than if each of
@@ -450,13 +455,15 @@ order. Going back to the cache-miss calculations from earlier:</p>
 </span><span class="w">    </span><span class="n">Big</span><span class="p">(</span><span class="nb">Vec</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="p">),</span><span class="w">
 </span><span class="w"></span><span class="p">}</span><span class="w">
 </span><span class="w">
-</span><span class="w"></span><span class="k">type</span> <span class="nc">Matrix</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">SmallVec</span><span class="o">&lt;</span><span class="n">SmallVec</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;&gt;</span><span class="p">;</span></code></pre></div>
+</span><span class="w"></span><span class="k">type</span> <span class="nc">Matrix</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">SmallVec</span><span class="o">&lt;</span><span class="n">SmallVec</span><span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;&gt;</span><span class="p">;</span><span class="w">
+</span><span class="w"></span></code></pre></div>
 <p>As long as there are less than or equal to 4 elements in the <code>SmallVec</code>, the
 size of each instance is the size of the data plus the size of the tag, which
 is:</p>
 <div class="highlight"><pre class="chroma"><code class="language-rust" data-lang="rust"><span class="kd">let</span><span class="w"> </span><span class="n">size_of_data</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">size_of</span>::<span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="p">()</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">4</span><span class="p">;</span><span class="w">
 </span><span class="w"></span><span class="kd">let</span><span class="w"> </span><span class="n">size_of_tag</span><span class="w">  </span><span class="o">=</span><span class="w"> </span><span class="n">max</span><span class="p">(</span><span class="n">size_of</span>::<span class="o">&lt;</span><span class="kt">u8</span><span class="o">&gt;</span><span class="p">(),</span><span class="w"> </span><span class="n">align_of</span>::<span class="o">&lt;</span><span class="n">T</span><span class="o">&gt;</span><span class="p">());</span><span class="w">
-</span><span class="w"></span><span class="n">size_of_data</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">size_of_tag</span></code></pre></div>
+</span><span class="w"></span><span class="n">size_of_data</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">size_of_tag</span><span class="w">
+</span><span class="w"></span></code></pre></div>
 <p>The obvious question is why the size of the tag isn&rsquo;t just <code>size_of::&lt;u8&gt;()</code>.
 This is because if <code>T</code> was more than 1 byte in size, this would mean that all of
 the elements would all be unaligned by 1 byte, which is bad. CPUs work much
@@ -516,7 +523,8 @@ Example: you can implement an integer logarithm function like so:</p>
 </span><span class="w">        </span><span class="n">out</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span><span class="w">
 </span><span class="w">        </span><span class="n">n</span><span class="w"> </span><span class="o">/=</span><span class="w"> </span><span class="n">base</span><span class="p">;</span><span class="w">
 </span><span class="w">    </span><span class="p">}</span><span class="w">
-</span><span class="w"></span><span class="p">}</span></code></pre></div>
+</span><span class="w"></span><span class="p">}</span><span class="w">
+</span><span class="w"></span></code></pre></div>
 <p>However, <code>n /= base; out += 1;</code> is slower to calculate than <code>n &lt; base</code>. To take
 advantage of this fact, you can unroll the loop like so:</p>
 <div class="highlight"><pre class="chroma"><code class="language-rust" data-lang="rust"><span class="k">fn</span> <span class="nf">log_base_unrolled</span><span class="p">(</span><span class="k">mut</span><span class="w"> </span><span class="n">n</span>: <span class="kt">usize</span><span class="p">,</span><span class="w"> </span><span class="n">base</span>: <span class="kt">usize</span><span class="p">)</span><span class="w"> </span>-&gt; <span class="kt">usize</span> <span class="p">{</span><span class="w">
@@ -542,7 +550,8 @@ advantage of this fact, you can unroll the loop like so:</p>
 </span><span class="w">        </span><span class="n">n</span><span class="w"> </span><span class="o">/=</span><span class="w"> </span><span class="n">precalculated_base</span><span class="p">[</span><span class="n">UNROLL_COUNT</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="mi">1</span><span class="p">];</span><span class="w">
 </span><span class="w">        </span><span class="n">out</span><span class="w"> </span><span class="o">+=</span><span class="w"> </span><span class="n">UNROLL_COUNT</span><span class="p">;</span><span class="w">
 </span><span class="w">    </span><span class="p">}</span><span class="w">
-</span><span class="w"></span><span class="p">}</span></code></pre></div>
+</span><span class="w"></span><span class="p">}</span><span class="w">
+</span><span class="w"></span></code></pre></div>
 <p>Here are the benchmarks I used:</p>
 <div class="highlight"><pre class="chroma"><code class="language-rust" data-lang="rust"><span class="cp">#[bench]</span><span class="w">
 </span><span class="w"></span><span class="k">fn</span> <span class="nf">bench_log_base</span><span class="p">(</span><span class="n">b</span>: <span class="kp">&amp;</span><span class="nc">mut</span><span class="w"> </span><span class="n">Bencher</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">
@@ -560,7 +569,8 @@ advantage of this fact, you can unroll the loop like so:</p>
 </span><span class="w">
 </span><span class="w">        </span><span class="n">assert_eq</span><span class="o">!</span><span class="p">(</span><span class="n">log_base</span><span class="p">(</span><span class="n">input</span><span class="p">,</span><span class="w"> </span><span class="mi">10</span><span class="p">),</span><span class="w"> </span><span class="mi">16</span><span class="p">);</span><span class="w">
 </span><span class="w">    </span><span class="p">});</span><span class="w">
-</span><span class="w"></span><span class="p">}</span></code></pre></div>
+</span><span class="w"></span><span class="p">}</span><span class="w">
+</span><span class="w"></span></code></pre></div>
 <p><code>test::black_box</code> is a magic function that prevents rustc and LLVM calculating
 those function calls at compile-time and converting them into a constant, which
 usually they would (actually, it&rsquo;s not magic, it&rsquo;s just some inline assembly
@@ -590,7 +600,8 @@ test bench_log_base_unrolled ... bench:   5 ns/iter (+/- 0)</code></pre></div>
 </span><span class="w">
 </span><span class="w">        </span><span class="n">assert_eq</span><span class="o">!</span><span class="p">(</span><span class="n">log_base_unrolled</span><span class="p">(</span><span class="n">input</span><span class="p">,</span><span class="w"> </span><span class="n">base</span><span class="p">),</span><span class="w"> </span><span class="mi">16</span><span class="p">);</span><span class="w">
 </span><span class="w">    </span><span class="p">});</span><span class="w">
-</span><span class="w"></span><span class="p">}</span></code></pre></div><div class="highlight"><pre class="chroma"><code class="language-text" data-lang="text">test bench_log_base_unrolled_nonconstbase ... bench:  37 ns/iter (+/- 1)
+</span><span class="w"></span><span class="p">}</span><span class="w">
+</span><span class="w"></span></code></pre></div><div class="highlight"><pre class="chroma"><code class="language-text" data-lang="text">test bench_log_base_unrolled_nonconstbase ... bench:  37 ns/iter (+/- 1)
 test bench_log_base_nonconstbase          ... bench: 199 ns/iter (+/- 5)</code></pre></div>
 <p>They&rsquo;re both much slower! Can we do better? Turns out yes, we can:</p>
 <div class="highlight"><pre class="chroma"><code class="language-rust" data-lang="rust"><span class="k">fn</span> <span class="nf">log_base_increasing</span><span class="p">(</span><span class="n">n</span>: <span class="kt">usize</span><span class="p">,</span><span class="w"> </span><span class="n">base</span>: <span class="kt">usize</span><span class="p">)</span><span class="w"> </span>-&gt; <span class="kt">usize</span> <span class="p">{</span><span class="w">
@@ -639,7 +650,8 @@ test bench_log_base_nonconstbase          ... bench: 199 ns/iter (+/- 5)</code><
 </span><span class="w">
 </span><span class="w">        </span><span class="n">assert_eq</span><span class="o">!</span><span class="p">(</span><span class="n">log_base_increasing</span><span class="p">(</span><span class="n">input</span><span class="p">,</span><span class="w"> </span><span class="n">base</span><span class="p">),</span><span class="w"> </span><span class="mi">16</span><span class="p">);</span><span class="w">
 </span><span class="w">    </span><span class="p">});</span><span class="w">
-</span><span class="w"></span><span class="p">}</span></code></pre></div>
+</span><span class="w"></span><span class="p">}</span><span class="w">
+</span><span class="w"></span></code></pre></div>
 <p>Let&rsquo;s check out the results now:</p>
 <div class="highlight"><pre class="chroma"><code class="language-text" data-lang="text">test bench_log_base                         ... bench:  18 ns/iter (+/- 0)
 test bench_log_base_nonconstbase            ... bench: 199 ns/iter (+/- 5)
@@ -674,12 +686,14 @@ make the change manually.</p>
 code, then instead of this:</p>
 <div class="highlight"><pre class="chroma"><code class="language-rust" data-lang="rust"><span class="k">fn</span> <span class="nf">do_something_with_array</span><span class="p">(</span><span class="n">array</span>: <span class="kp">&amp;</span><span class="p">[</span><span class="kt">u8</span><span class="p">])</span><span class="w"> </span>-&gt; <span class="kt">u8</span> <span class="p">{</span><span class="w">
 </span><span class="w">    </span><span class="n">array</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">array</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">array</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">array</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">array</span><span class="p">[</span><span class="mi">4</span><span class="p">]</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">array</span><span class="p">[</span><span class="mi">5</span><span class="p">]</span><span class="w">
-</span><span class="w"></span><span class="p">}</span></code></pre></div>
+</span><span class="w"></span><span class="p">}</span><span class="w">
+</span><span class="w"></span></code></pre></div>
 <p>Do this:</p>
 <div class="highlight"><pre class="chroma"><code class="language-rust" data-lang="rust"><span class="k">fn</span> <span class="nf">do_something_with_array</span><span class="p">(</span><span class="n">array</span>: <span class="kp">&amp;</span><span class="p">[</span><span class="kt">u8</span><span class="p">])</span><span class="w"> </span>-&gt; <span class="kt">u8</span> <span class="p">{</span><span class="w">
 </span><span class="w">    </span><span class="n">assert</span><span class="o">!</span><span class="p">(</span><span class="n">array</span><span class="p">.</span><span class="n">len</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="mi">5</span><span class="p">);</span><span class="w">
 </span><span class="w">    </span><span class="n">array</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">array</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">array</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">array</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">array</span><span class="p">[</span><span class="mi">4</span><span class="p">]</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">array</span><span class="p">[</span><span class="mi">5</span><span class="p">]</span><span class="w">
-</span><span class="w"></span><span class="p">}</span></code></pre></div>
+</span><span class="w"></span><span class="p">}</span><span class="w">
+</span><span class="w"></span></code></pre></div>
 <p>This allows LLVM to realize that the later asserts are unreachable and elides
 them. This is useful for any code that may assert multiple different qualities
 about the same data, but is especially useful for indexing since we know that
@@ -785,7 +799,8 @@ multiple different values and converts it to a special instruction that, well,
 does the same thing to multiple different values.</p>
 
 <p>For example, the compiler could translate the following numerical code:</p>
-<div class="highlight"><pre class="chroma"><code class="language-rust" data-lang="rust"><span class="p">(</span><span class="n">a1</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">a2</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="p">(</span><span class="n">b1</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">b2</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="p">(</span><span class="n">c1</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">c2</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="p">(</span><span class="n">d1</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">d2</span><span class="p">)</span></code></pre></div>
+<div class="highlight"><pre class="chroma"><code class="language-rust" data-lang="rust"><span class="p">(</span><span class="n">a1</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">a2</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="p">(</span><span class="n">b1</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">b2</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="p">(</span><span class="n">c1</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">c2</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="p">(</span><span class="n">d1</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">d2</span><span class="p">)</span><span class="w">
+</span><span class="w"></span></code></pre></div>
 <p>into just one instruction that executes all four subexpressions as fast as a
 single addition.</p>
 <div class="highlight"><pre class="chroma"><code class="language-text" data-lang="text">%intermediate-value = add-vectors [%a1 %b1 %c1 %d1] [%a2 %b2 %c2 %d2]
@@ -870,7 +885,8 @@ the one in the standard library.</p>
 </span><span class="w">    </span><span class="p">}</span><span class="w">
 </span><span class="w">
 </span><span class="w">    </span><span class="nb">Ok</span><span class="p">(</span><span class="n">output</span><span class="p">)</span><span class="w">
-</span><span class="w"></span><span class="p">}</span></code></pre></div>
+</span><span class="w"></span><span class="p">}</span><span class="w">
+</span><span class="w"></span></code></pre></div>
 <p>I explicitly use <code>wrapping_*</code> functions not for optimization purposes (because
 overflow checks are removed at runtime), but because overflow is required for
 correct behaviour. You&rsquo;ll notice some optimizations here:</p>
@@ -987,7 +1003,8 @@ arithmetic.</p>
 </span><span class="w">        </span><span class="kd">let</span><span class="w"> </span><span class="n">input</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">black_box</span><span class="p">(</span><span class="s">&#34;F&#34;</span><span class="p">);</span><span class="w">
 </span><span class="w">        </span><span class="n">assert_eq</span><span class="o">!</span><span class="p">(</span><span class="kt">usize</span>::<span class="n">from_str_radix</span><span class="p">(</span><span class="n">input</span><span class="p">,</span><span class="w"> </span><span class="mi">16</span><span class="p">),</span><span class="w"> </span><span class="nb">Ok</span><span class="p">(</span><span class="mh">0xF</span><span class="p">));</span><span class="w">
 </span><span class="w">    </span><span class="p">});</span><span class="w">
-</span><span class="w"></span><span class="p">}</span></code></pre></div>
+</span><span class="w"></span><span class="p">}</span><span class="w">
+</span><span class="w"></span></code></pre></div>
 <p>Results:</p>
 <div class="highlight"><pre class="chroma"><code class="language-text" data-lang="text">test bench_from_str                      ... bench:          22 ns/iter (+/- 7)
 test bench_from_str_native               ... bench:          36 ns/iter (+/- 0)
