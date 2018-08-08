@@ -73,6 +73,16 @@
 
 &lt;p&gt;So if we are to create a Wasm-to-native compiler, we will have to do it ourselves, with strong guarantees about runtime behaviour and determinism. This isn&amp;rsquo;t easy, but in the meantime we have an efficient Wasm interpreter called &lt;a href=&#34;https://github.com/paritytech/wasmi&#34;&gt;wasmi&lt;/a&gt;. This a correctness-oriented interpreter for Wasm on the blockchain but it&amp;rsquo;s already fast.&lt;/p&gt;
 
+&lt;p&gt;In summary, the main points are:&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;Wasm allows us to reuse existing tooling;&lt;/li&gt;
+&lt;li&gt;Wasm is easily verifiable for correctness;&lt;/li&gt;
+&lt;li&gt;Wasm allows us to effectively balance price of deployment against price of execution;&lt;/li&gt;
+&lt;li&gt;The benefits of using the formal-verification-oriented option dissolve when you try to apply it to a VM format - a Turing-incomplete language is more suitable as a frontend used by humans instead of a backend interpreted by the blockchain client;&lt;/li&gt;
+&lt;li&gt;We can&amp;rsquo;t easily use existing Wasm runtimes since our requirements are much stricter than theirs.&lt;/li&gt;
+&lt;/ul&gt;
+
 &lt;p&gt;I hope I&amp;rsquo;ve answered most of the questions that people have asked about our choice to use Wasm and our subsequent choice &lt;em&gt;not&lt;/em&gt; to use existing Wasm engines at the core of our Parity Substrate product (and, subsequently, in Polkadot). If you have more questions, you can send them to my Twitter account &lt;a href=&#34;https://twitter.com/meatwithdreams&#34;&gt;@meatwithdreams&lt;/a&gt;.&lt;/p&gt;
 &lt;div class=&#34;footnotes&#34;&gt;
 
