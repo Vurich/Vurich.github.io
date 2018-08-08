@@ -27,7 +27,7 @@
 
 &lt;ul&gt;
 &lt;li&gt;Secure - it must be impossible for anyone to violate their permissions by using the smart contract platform. After all, anyone can deploy a smart contract.&lt;/li&gt;
-&lt;li&gt;Deterministic - it must be impossible for smart contracts to be executed with different results on different nodes, even across differing architectures, operating systems, timezones, phases of the moon et cetera.&lt;/li&gt;
+&lt;li&gt;Deterministic - it must be impossible for smart contracts to produce different results on different nodes, even across differing architectures, operating systems, timezones, phases of the moon et cetera.&lt;/li&gt;
 &lt;li&gt;Generic - it should be possible to write essentially anything that you want using the primitives supplied by the VM. Some people would consider this a misfeature, I&amp;rsquo;ll explain my reasoning later.&lt;/li&gt;
 &lt;li&gt;Efficient - the more CPU-time a given contract takes to execute, the more expensive running that contract will be. This might not seem too big an issue since no-one is running raytracing or other CPU-bound operations on the blockchain, but it leads to a cascade of other problems as we&amp;rsquo;ll see later.&lt;/li&gt;
 &lt;/ul&gt;
