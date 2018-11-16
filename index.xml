@@ -3052,34 +3052,32 @@ wrote a version of this that works forwards and multiplies &lt;code&gt;output&lt
 each loop but the backwards method is 10% faster. This seems to be due to
 better instruction-level parallelism. The multiplications can be parallelized
 and only the addition relies on the previous iteration&amp;rsquo;s value for &lt;code&gt;output&lt;/code&gt;,
-and addition is much faster.&lt;/li&gt;
+and addition is much faster. Any folding operations can be improved in this way by exploiting the
+algebraic laws (in this case, the distributive law) to improve the number of
+operations that can be done in parallel.&lt;/li&gt;
+&lt;li&gt;We rely on overflow to test &lt;code&gt;A &amp;lt; x &amp;lt; B&lt;/code&gt; comparisons. This is only useful here
+because we already need the &lt;code&gt;x - A&lt;/code&gt; value, so we&amp;rsquo;re saving an extra comparison
+and a bitwise and. In most code &lt;code&gt;A &amp;lt; x &amp;amp;&amp;amp; x &amp;lt; B&lt;/code&gt; is as cheap or cheaper than
+&lt;code&gt;x - A &amp;lt; B&lt;/code&gt; with overflow.&lt;/li&gt;
+&lt;li&gt;We use &lt;code&gt;| 32&lt;/code&gt; to unify the codepaths for upper- and lowercase letters,
+reducing the number of comparisons we need to do.&lt;/li&gt;
+&lt;li&gt;We don&amp;rsquo;t do &lt;code&gt;output + digit * mul&lt;/code&gt; when &lt;code&gt;output == 0&lt;/code&gt; and &lt;code&gt;mul == 1&lt;/code&gt;. This
+seems to be consistently 1ns faster, but it&amp;rsquo;s possible that this doesn&amp;rsquo;t make
+a difference and the 1ns speedup I&amp;rsquo;m seeing is pure luck. I reran the
+benchmarks both with and without the change multiple times and saw a
+consistent difference but this doesn&amp;rsquo;t rule out luck. This is the problem with
+microbenchmarks, when the difference becomes small enough you can&amp;rsquo;t tell
+whether you&amp;rsquo;re really making it faster.&lt;/li&gt;
+&lt;li&gt;We use Rust&amp;rsquo;s safe iterator interface, which is as fast as the C idiom of
+storing a &amp;ldquo;start&amp;rdquo; and &amp;ldquo;end&amp;rdquo; pointer so you can check whether the loop is
+finished with a simple &lt;code&gt;==&lt;/code&gt;. If you ever hear someone say &amp;ldquo;Rust&amp;rsquo;s safety
+guarantees are useless because you need to drop down to unsafe to get any real
+speed&amp;rdquo; (I&amp;rsquo;ve seen this almost verbatim on Hacker News before) you can show
+them this.&lt;/li&gt;
+&lt;li&gt;We don&amp;rsquo;t rely on const-folding in order to make our code fast, but it does run
+faster with a constant value for &lt;code&gt;radix&lt;/code&gt;. Therefore, we add &lt;code&gt;#[inline]&lt;/code&gt; to
+allow downstream crates to apply const-folding too.&lt;/li&gt;
 &lt;/ul&gt;
-
-&lt;p&gt;Any folding operations can be improved in this way by exploiting the
-  algebraic laws (in this case, the distributive law) to improve the number of
-  operations that can be done in parallel.
-* We rely on overflow to test &lt;code&gt;A &amp;lt; x &amp;lt; B&lt;/code&gt; comparisons. This is only useful here
-  because we already need the &lt;code&gt;x - A&lt;/code&gt; value, so we&amp;rsquo;re saving an extra comparison
-  and a bitwise and. In most code &lt;code&gt;A &amp;lt; x &amp;amp;&amp;amp; x &amp;lt; B&lt;/code&gt; is as cheap or cheaper than
-  &lt;code&gt;x - A &amp;lt; B&lt;/code&gt; with overflow.
-* We use &lt;code&gt;| 32&lt;/code&gt; to unify the codepaths for upper- and lowercase letters,
-  reducing the number of comparisons we need to do.
-* We don&amp;rsquo;t do &lt;code&gt;output + digit * mul&lt;/code&gt; when &lt;code&gt;output == 0&lt;/code&gt; and &lt;code&gt;mul == 1&lt;/code&gt;. This
-  seems to be consistently 1ns faster, but it&amp;rsquo;s possible that this doesn&amp;rsquo;t make
-  a difference and the 1ns speedup I&amp;rsquo;m seeing is pure luck. I reran the
-  benchmarks both with and without the change multiple times and saw a
-  consistent difference but this doesn&amp;rsquo;t rule out luck. This is the problem with
-  microbenchmarks, when the difference becomes small enough you can&amp;rsquo;t tell
-  whether you&amp;rsquo;re really making it faster.
-* We use Rust&amp;rsquo;s safe iterator interface, which is as fast as the C idiom of
-  storing a &amp;ldquo;start&amp;rdquo; and &amp;ldquo;end&amp;rdquo; pointer so you can check whether the loop is
-  finished with a simple &lt;code&gt;==&lt;/code&gt;. If you ever hear someone say &amp;ldquo;Rust&amp;rsquo;s safety
-  guarantees are useless because you need to drop down to unsafe to get any real
-  speed&amp;rdquo; (I&amp;rsquo;ve seen this almost verbatim on Hacker News before) you can show
-  them this.
-* We don&amp;rsquo;t rely on const-folding in order to make our code fast, but it does run
-  faster with a constant value for &lt;code&gt;radix&lt;/code&gt;. Therefore, we add &lt;code&gt;#[inline]&lt;/code&gt; to
-  allow downstream crates to apply const-folding too.&lt;/p&gt;
 
 &lt;p&gt;The method I used for this is the basic method you should use for any
 optimization work: write a representative benchmark and then progressively tweak
@@ -3202,7 +3200,7 @@ would be this:&lt;/p&gt;
 
 &lt;blockquote&gt;
 &lt;p&gt;The fastest code is code that doesn&amp;rsquo;t run at all, the second-fastest code is
-code that never stops running.&lt;/p&gt;
+code that never has to wait.&lt;/p&gt;
 &lt;/blockquote&gt;
 
 &lt;p&gt;Ideally, you want to do less work, and if you&amp;rsquo;re doing the minimum amount of
