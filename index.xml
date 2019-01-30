@@ -6,10 +6,100 @@
     <description>Recent content on troubles.md</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Wed, 12 Sep 2018 12:04:09 +0200</lastBuildDate>
+    <lastBuildDate>Wed, 30 Jan 2019 14:13:48 +0100</lastBuildDate>
     
         <atom:link href="http://troubles.md/index.xml" rel="self" type="application/rss+xml" />
     
+    
+    <item>
+      <title>WebAssembly Troubles part 1: WebAssembly Is Not a Stack Machine</title>
+      <link>http://troubles.md/posts/wasm-is-not-a-stack-machine/</link>
+      <pubDate>Wed, 30 Jan 2019 14:13:48 +0100</pubDate>
+      
+      <guid>http://troubles.md/posts/wasm-is-not-a-stack-machine/</guid>
+      <description>
+
+&lt;blockquote&gt;
+&lt;h3 id=&#34;preamble&#34;&gt;Preamble&lt;/h3&gt;
+
+&lt;p&gt;This article assumes some familiarity with virtual machines, compilers and WebAssembly, but I&amp;rsquo;ll try to link to relevant information where necessary so even if you&amp;rsquo;re not you can follow along.
+&lt;br/&gt;&lt;br/&gt;
+Also, this series is going to come off as if I dislike WebAssembly. I love WebAssembly! In fact, I love it so much that I want it to be the best that it can be, and this series is me working through my complaints with the design in the hope that some or all of these issues can be addressed soon, while the ink is still fresh on the specification.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;I&amp;rsquo;m sure you&amp;rsquo;re all familiar with WebAssembly by now. It&amp;rsquo;s seeing use everywhere, from plugins to blockchain smart contracts to, of course, the web. If you go to the Wikipedia article for WebAssembly right now, you&amp;rsquo;ll get a great overview of the technology, except for one thing: the &amp;ldquo;Design&amp;rdquo; section states:&lt;/p&gt;
+
+&lt;blockquote&gt;
+&lt;p&gt;WebAssembly code is intended to be run on a portable abstract structured stack machine&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;Nope.&lt;/p&gt;
+
+&lt;h2 id=&#34;stack-machines-vs-register-machines&#34;&gt;Stack machines vs register machines&lt;/h2&gt;
+
+&lt;p&gt;The difference between a stack and a register machine is essentially this: a stack machine pops values from and pushed values onto a stack, so for example a &lt;code&gt;+&lt;/code&gt; operation will pop the last two values off of the stack, add them together, and then push the result back onto the stack. A register machine has some number of places where values can be stored, and operations reads and writes to those registers. So &lt;code&gt;+&lt;/code&gt; will take 3 arguments, 2 that represent the registers to read the operands from and 1 that represents the register to write the result to&lt;sup class=&#34;footnote-ref&#34; id=&#34;fnref:acktually&#34;&gt;&lt;a href=&#34;#fn:acktually&#34;&gt;1&lt;/a&gt;&lt;/sup&gt;.&lt;/p&gt;
+
+&lt;p&gt;The problem with registers is that there is no liveness analysis. If you have some code like so:&lt;/p&gt;
+
+&lt;pre&gt;&lt;code&gt;%0 = 1
+%1 = 2
+%2 = add %0, %1
+...
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;Are &lt;code&gt;%0&lt;/code&gt; and &lt;code&gt;%1&lt;/code&gt; used after the addition? Without lookahead, you have no way of knowing. Even in SSA&lt;sup class=&#34;footnote-ref&#34; id=&#34;fnref:ssa&#34;&gt;&lt;a href=&#34;#fn:ssa&#34;&gt;2&lt;/a&gt;&lt;/sup&gt; register machines like LLVM IR (where each register is written to exactly once) the liveness of each register must be continuously recalculated. This means that you have overhead associated with compilation - knowing the liveness of variables is extremely important for generating efficient assembly, but instead of the liveness being calculated when creating the IR and stored as a part of it you have to recalculate this data every time.&lt;/p&gt;
+
+&lt;p&gt;If the IR is entirely in-memory this isn&amp;rsquo;t so bad, especially if your code is in SSA form, but it means that you have to do extra work for the same quality of code and it means that a streaming compiler (like FireFox&amp;rsquo;s Wasm baseline compiler) is unable to produce good code.&lt;/p&gt;
+
+&lt;p&gt;You can, of course, add liveness analysis metadata to the machine, but that liveness analysis is only useful if your code is in SSA form - if it&amp;rsquo;s not SSA form then the liveness is &lt;em&gt;extremely&lt;/em&gt; course-grained.&lt;/p&gt;
+
+&lt;p&gt;Well, that&amp;rsquo;s where WebAssembly comes in. See, WebAssembly has these things called locals. Locals are mutable variables that live for the lifetime of a function. Since WebAssembly blocks can&amp;rsquo;t take arguments, they&amp;rsquo;re the only way for blocks to receive data from outside. This includes loops, the classic example, but it also includes regular blocks. For example:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-lisp&#34; data-lang=&#34;lisp&#34;&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;result&lt;/span&gt; &lt;span class=&#34;nv&#34;&gt;i32&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+  &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;add&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;i32.const&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;1&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;i32.const&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;2&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;))&lt;/span&gt;
+  &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;block&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;result&lt;/span&gt; &lt;span class=&#34;nv&#34;&gt;i32&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+    &lt;span class=&#34;c1&#34;&gt;; Can&amp;#39;t read the result of the add above&lt;/span&gt;
+  &lt;span class=&#34;p&#34;&gt;))&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;You have to do this:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-lisp&#34; data-lang=&#34;lisp&#34;&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;result&lt;/span&gt; &lt;span class=&#34;nv&#34;&gt;i32&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+  &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;local&lt;/span&gt; &lt;span class=&#34;nv&#34;&gt;i32&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+  &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;local.set&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;add&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;i32.const&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;1&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;i32.const&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;2&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)))&lt;/span&gt;
+  &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;block&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;result&lt;/span&gt; &lt;span class=&#34;nv&#34;&gt;i32&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+    &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;local.get&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+  &lt;span class=&#34;p&#34;&gt;))&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;This is a problem. Usually a stack machine can be trivially converted to SSA form with liveness analysis - an item on the stack is dead when it is used as the argument to an operator - no ifs, no buts. Even a &lt;code&gt;pick&lt;/code&gt; operator (which duplicates the nth item of the stack to the top of the stack) can be thought of in these terms as long as the argument to &lt;code&gt;pick&lt;/code&gt; is a compile-time constant, although generally the conversion of a stack machine that includes a &lt;code&gt;pick&lt;/code&gt; instruction would be implemented using refcounting. However, locals are a problem. They&amp;rsquo;re mutable, so you can&amp;rsquo;t trivially convert them to SSA, and they always live for the lifetime of the function.&lt;/p&gt;
+
+&lt;p&gt;This poses a problem for optimisation. SSA form is one of the most powerful optimisation tools, and the fact that locals are mutable defeats that, but the fact that they&amp;rsquo;re global to the function causes another problem. Say you&amp;rsquo;re trying to compile WebAssembly into x86 on Linux (which uses the SystemV calling convention). You&amp;rsquo;ll take some number of arguments in registers, and now unless you do your own liveness analysis on that function those registers are permanently taken up by those arguments. Without extra analysis you don&amp;rsquo;t know when the last usage of that argument is, and so you can&amp;rsquo;t ever reuse the register used by that argument for something else. Even a function that never uses any of its arguments still can&amp;rsquo;t use those registers for something else.&lt;/p&gt;
+
+&lt;p&gt;This is a register machine without liveness analysis, but not only that, it&amp;rsquo;s a register machine that isn&amp;rsquo;t in SSA form - both of the tools at our disposal to do optimisation are unavailable. In a true, optimising compiler we can recreate that information, but WebAssembly was already emitted by a compiler that has that information. There&amp;rsquo;s no technical reason why we should have to do that work again, it&amp;rsquo;s just a deficiency in the language. Any compiler that has to act on a stream of WebAssembly will end up generating significantly worse code for essentially no good reason.&lt;/p&gt;
+
+&lt;h2 id=&#34;why&#34;&gt;Why?&lt;/h2&gt;
+
+&lt;p&gt;The developers of the WebAssembly spec aren&amp;rsquo;t dumb. For the most part it&amp;rsquo;s an extremely well-designed specification. However, they are weighed down by the fact that WebAssembly started out as a simplified form of asm.js. WebAssembly started out as an AST, not a bytecode. Essentially it was originally designed to be source code, like JavaScript. It would be a more-efficient representation thereof but it still wasn&amp;rsquo;t a proper virtual machine instruction set. Then, it became a register machine&lt;sup class=&#34;footnote-ref&#34; id=&#34;fnref:infinite-registers&#34;&gt;&lt;a href=&#34;#fn:infinite-registers&#34;&gt;3&lt;/a&gt;&lt;/sup&gt;, and only at the last minute did it become a stack machine. At that point, concepts like locals were quite entrenched in the spec. Not only that, but for the most part the WebAssembly specification team were flying blind. No streaming compiler had yet been built, hell, no compiler had yet been built. It wasn&amp;rsquo;t clear that having locals would be problematic - after all, C gets by just fine using local variables that the compiler constructs the SSA graph for.&lt;/p&gt;
+
+&lt;p&gt;It&amp;rsquo;s only by working on a streaming WebAssembly compiler for integration with &lt;a href=&#34;https://github.com/CraneStation/wasmtime&#34;&gt;Wasmtime&lt;/a&gt; that I realised these issues, as well as more issues that I&amp;rsquo;ll get to in later articles in this series. Before then I considered WebAssembly&amp;rsquo;s design to be utterly rock-solid, and in fact I still strongly believe that most of the decisions made were the right ones. Although it has problems, it&amp;rsquo;s incredible how much the WebAssembly working group got right considering it was such relatively unknown territory at the time of the specification&amp;rsquo;s writing.&lt;/p&gt;
+
+&lt;h2 id=&#34;what-s-the-alternative&#34;&gt;What&amp;rsquo;s the alternative?&lt;/h2&gt;
+
+&lt;p&gt;So currently locals represent both function arguments and local variables. There is &lt;a href=&#34;https://github.com/WebAssembly/multi-value/blob/master/proposals/multi-value/Overview.md&#34;&gt;a proposal to allow blocks to have arguments and both functions and blocks to return more than one value&lt;/a&gt;. With this, it becomes possible to get rid of locals entirely. Loop counters are implemented by having the counter be given as an argument, and then when you jump to the header of the loop you must have the new value of the counter on the stack. This acts like a phi function but is much conceptually simpler. Since it&amp;rsquo;s impossible to get the address of locals in WebAssembly there&amp;rsquo;s no need for &lt;code&gt;alloca&lt;/code&gt; in any form - unlike in LLVM, you don&amp;rsquo;t need to have locals at all. The only thing left is to implement function arguments by having the function start with its arguments on the stack and you no longer need locals at all.&lt;/p&gt;
+
+&lt;p&gt;This massively reduces the complexity of WebAssembly compilers without reducing the expressivity, and allows the compilers generating the WebAssembly to encode more of their knowledge about the original source into the WebAssembly itself. Although optimising compilers will probably not generate better code from this, they will become much simpler and easier to maintain, and streaming compilers will become significantly simpler and produce significantly better code.&lt;/p&gt;
+
+&lt;p&gt;Join me next time where I tackle WebAssembly&amp;rsquo;s problematic control flow.&lt;/p&gt;
+&lt;div class=&#34;footnotes&#34;&gt;
+
+&lt;hr /&gt;
+
+&lt;ol&gt;
+&lt;li id=&#34;fn:acktually&#34;&gt;Yes, I know that many register machines such as x86 output into one of the input registers, but that&amp;rsquo;s still conceptually the same as taking separate arguments for input and output, just more limited.
+ &lt;a class=&#34;footnote-return&#34; href=&#34;#fnref:acktually&#34;&gt;&lt;sup&gt;[return]&lt;/sup&gt;&lt;/a&gt;&lt;/li&gt;
+&lt;li id=&#34;fn:ssa&#34;&gt;if you don&amp;rsquo;t know what SSA form is you can see &lt;a href=&#34;https://en.wikipedia.org/wiki/Static_single_assignment_form&#34;&gt;the Wikipedia article on it&lt;/a&gt;
+ &lt;a class=&#34;footnote-return&#34; href=&#34;#fnref:ssa&#34;&gt;&lt;sup&gt;[return]&lt;/sup&gt;&lt;/a&gt;&lt;/li&gt;
+&lt;li id=&#34;fn:infinite-registers&#34;&gt;I believe that it had infinite registers and so it was possible to generate it in SSA form, but it had no liveness analysis.
+ &lt;a class=&#34;footnote-return&#34; href=&#34;#fnref:infinite-registers&#34;&gt;&lt;sup&gt;[return]&lt;/sup&gt;&lt;/a&gt;&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/div&gt;
+</description>
+    </item>
     
     <item>
       <title>Never Fork Again</title>
