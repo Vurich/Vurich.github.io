@@ -6,10 +6,93 @@
     <description>Recent content on troubles.md</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Wed, 30 Jan 2019 14:13:48 +0100</lastBuildDate>
+    <lastBuildDate>Wed, 30 Jan 2019 21:28:10 +0100</lastBuildDate>
     
         <atom:link href="http://troubles.md/index.xml" rel="self" type="application/rss+xml" />
     
+    
+    <item>
+      <title>WebAssembly Troubles part 2: Why Do We Need the Relooper Algorithm, Again?</title>
+      <link>http://troubles.md/posts/why-do-we-need-the-relooper-algorithm-again/</link>
+      <pubDate>Wed, 30 Jan 2019 21:28:10 +0100</pubDate>
+      
+      <guid>http://troubles.md/posts/why-do-we-need-the-relooper-algorithm-again/</guid>
+      <description>
+
+&lt;blockquote&gt;
+&lt;h3 id=&#34;preamble&#34;&gt;Preamble&lt;/h3&gt;
+
+&lt;p&gt;This is part 2 of a 3-part miniseries on issues with WebAssembly and proposals to fix them. &lt;a href=&#34;http://troubles.md/posts/wasm-is-not-a-stack-machine/&#34;&gt;Part 1&lt;/a&gt;.
+&lt;br/&gt;&lt;br/&gt;
+This article assumes some familiarity with virtual machines, compilers and WebAssembly, but I&amp;rsquo;ll try to link to relevant information where necessary so even if you&amp;rsquo;re not you can follow along.
+&lt;br/&gt;&lt;br/&gt;
+Also, this series is going to come off as if I dislike WebAssembly. I love WebAssembly! I wrote a &lt;a href=&#34;http://troubles.md/posts/why-wasm/&#34;&gt;whole article about how great it is&lt;/a&gt;! In fact, I love it so much that I want it to be the best that it can be, and this series is me working through my complaints with the design in the hope that some or all of these issues can be addressed soon, while the ink is still somewhat wet on the specification.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;So if there&amp;rsquo;s one thing people know about WebAssembly control flow, it&amp;rsquo;s that it doesn&amp;rsquo;t allow &lt;code&gt;goto&lt;/code&gt;. &lt;code&gt;goto&lt;/code&gt;, we&amp;rsquo;re told, is &lt;a href=&#34;https://homepages.cwi.nl/~storm/teaching/reader/Dijkstra68.pdf&#34;&gt;considered harmful&lt;/a&gt;, and so WebAssembly only implements simple control flow constructs:&lt;/p&gt;
+
+&lt;ul&gt;
+&lt;li&gt;&lt;code&gt;block&lt;/code&gt;, which you can break to the end of;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;loop&lt;/code&gt;, which you can jump to the header of;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;if&lt;/code&gt;, which allows you to choose either the &lt;code&gt;then&lt;/code&gt; or &lt;code&gt;else&lt;/code&gt; branch depending on a condition;&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;br&lt;/code&gt;, which unconditionally jumps to a block&amp;rsquo;s &amp;ldquo;target&amp;rdquo; (so the end for a &lt;code&gt;block&lt;/code&gt; or &lt;code&gt;if&lt;/code&gt;..&lt;code&gt;else&lt;/code&gt; and the beginning for a loop);&lt;/li&gt;
+&lt;li&gt;&lt;code&gt;br_table&lt;/code&gt;, which can jump to the target of one of many blocks based on a runtime value;&lt;/li&gt;
+&lt;li&gt;and &lt;code&gt;br_if&lt;/code&gt;, which either jumps to the block&amp;rsquo;s target or continues depending on a condition.&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h2 id=&#34;redundancy&#34;&gt;Redundancy&lt;/h2&gt;
+
+&lt;p&gt;The eagle-eyed among you may have noticed that there is already some redundancy in those constructs. &lt;code&gt;if&lt;/code&gt;..&lt;code&gt;else&lt;/code&gt; can be implemented easily using &lt;code&gt;block&lt;/code&gt; and &lt;code&gt;br_if&lt;/code&gt;. It looks something like so:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-lisp&#34; data-lang=&#34;lisp&#34;&gt;&lt;span class=&#34;c1&#34;&gt;; Version using `if`&lt;/span&gt;
+&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;if&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;result&lt;/span&gt; &lt;span class=&#34;nv&#34;&gt;i32&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;nv&#34;&gt;some_condition&lt;/span&gt;
+  &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;then&lt;/span&gt;
+    &lt;span class=&#34;c1&#34;&gt;; ..then branch..&lt;/span&gt;
+  &lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+  &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;else&lt;/span&gt;
+    &lt;span class=&#34;c1&#34;&gt;; ..else branch..&lt;/span&gt;
+  &lt;span class=&#34;p&#34;&gt;))&lt;/span&gt;
+&lt;span class=&#34;c1&#34;&gt;; Version using `block` and `br_if`&lt;/span&gt;
+&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;block&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;param&lt;/span&gt; &lt;span class=&#34;nv&#34;&gt;$n&lt;/span&gt; &lt;span class=&#34;nv&#34;&gt;i32&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;result&lt;/span&gt; &lt;span class=&#34;nv&#34;&gt;i32&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+  &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;block&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;param&lt;/span&gt; &lt;span class=&#34;nv&#34;&gt;$n&lt;/span&gt; &lt;span class=&#34;nv&#34;&gt;i32&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;result&lt;/span&gt; &lt;span class=&#34;nv&#34;&gt;i32&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+    &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;br_if&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt; &lt;span class=&#34;nv&#34;&gt;$n&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+    &lt;span class=&#34;c1&#34;&gt;; ..then branch..&lt;/span&gt;
+    &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;br&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;1&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;))&lt;/span&gt;
+  &lt;span class=&#34;c1&#34;&gt;; ..else branch..&lt;/span&gt;
+&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Except whoops! No it isn&amp;rsquo;t! In WebAssembly, blocks can&amp;rsquo;t take arguments. I touch on this in my previous article but there&amp;rsquo;s &lt;a href=&#34;https://github.com/WebAssembly/multi-value/blob/master/proposals/multi-value/Overview.md&#34;&gt;a proposal to fix this&lt;/a&gt;. Let&amp;rsquo;s say this gets fixed though, and blocks gain the ability to take arguments. In this case, not only are these two pieces of code identical, but even a baseline non-optimising compiler will produce identical assembly for both of them. The second one takes more bytes to represent but it&amp;rsquo;s a simple recurring pattern, which makes it easy to write domain-specific compression for it&lt;sup class=&#34;footnote-ref&#34; id=&#34;fnref:macros&#34;&gt;&lt;a href=&#34;#fn:macros&#34;&gt;1&lt;/a&gt;&lt;/sup&gt;.&lt;/p&gt;
+
+&lt;h2 id=&#34;deeper-down-the-rabbit-hole&#34;&gt;Deeper down the rabbit hole&lt;/h2&gt;
+
+&lt;p&gt;It&amp;rsquo;s not news to most programmers that really all of these constructs are redundant if WebAssembly had &lt;code&gt;goto&lt;/code&gt;. If you had &lt;code&gt;goto&lt;/code&gt; and some &lt;code&gt;goto_if&lt;/code&gt; variant that conditionally jumped to a label you could implement all of these constructs. So why doesn&amp;rsquo;t WebAssembly support &lt;code&gt;goto&lt;/code&gt;?&lt;/p&gt;
+
+&lt;p&gt;The classic argument against &lt;code&gt;goto&lt;/code&gt; is that it leads to spaghetti code. No-one&amp;rsquo;s writing raw WebAssembly though (or rather, most people aren&amp;rsquo;t writing raw WebAssembly), so what&amp;rsquo;s the problem? Well, WebAssembly does have some constraints, specifically it must produce code that is valid. WebAssembly is a stack machine, and you can&amp;rsquo;t jump to just any label since that label might point to code that pops too many values off the stack, or pops the wrong types off the stack, or pushes too many values onto the stack. Essentially raw &lt;code&gt;goto&lt;/code&gt;s allow you to do all kinds of evil stuff. What you really want is a list of &lt;code&gt;block&lt;/code&gt;s like WebAssembly has now, each taking some number of arguments and returning some number of values onto the stack, and that you can call like function. Now you can have arbitrary flow between these blocks, like a typed version of &lt;code&gt;goto&lt;/code&gt;.&lt;/p&gt;
+
+&lt;p&gt;Now I&amp;rsquo;m not some visionary genius and I didn&amp;rsquo;t come up with this idea, nor was I the first to apply this to WebAssembly. The concept has been implemented in compilers for a very long time, where it is known as a [control flow graph][&lt;a href=&#34;https://en.wikipedia.org/wiki/Control_flow_graph&#34;&gt;https://en.wikipedia.org/wiki/Control_flow_graph&lt;/a&gt;] or CFG. A CFG is usually combined with a code representation in SSA form, and if you&amp;rsquo;ve read my previous article you probably know where this is going by now but let&amp;rsquo;s work through it together anyway. As for implementing it in WebAssembly, I was introduced to this as it applies to WebAssembly by the author of the &lt;a href=&#34;https://github.com/WebAssembly/funclets/blob/master/proposals/funclets/Overview.md&#34;&gt;WebAssembly Funclets proposal&lt;/a&gt;, which implements this basic idea.&lt;/p&gt;
+
+&lt;h2 id=&#34;why-bother&#34;&gt;Why bother?&lt;/h2&gt;
+
+&lt;p&gt;CFGs are the backbone of almost every static language compiler out there. Both LLVM and GCC use a CFG to combine the different control flow constructs like &lt;code&gt;for&lt;/code&gt;, &lt;code&gt;while&lt;/code&gt;, &lt;code&gt;if&lt;/code&gt; and even &lt;code&gt;goto&lt;/code&gt; into a single representation that can be used to define them all. This causes a problem for compiling to WebAssembly. Since WebAssembly doesn&amp;rsquo;t allow arbitrary control-flow graphs, compilers have to detect when some set of nodes in the CFG can be represented using WebAssembly&amp;rsquo;s control flow constructs and emit them, falling back to a complicated algorithm like &lt;a href=&#34;http://mozakai.blogspot.com/2012/05/reloop-all-blocks.html&#34;&gt;Relooper&lt;/a&gt; or Stackifier (there&amp;rsquo;s no documentation online, it&amp;rsquo;s only mentioned by this name in LLVM internal discussions) to emulate complex control flow. Essentially the fallback algorithm converts the CFG into a the equivalent of a loop combined with a switch statement, which can be extremely slow.&lt;/p&gt;
+
+&lt;p&gt;Currently compilers that convert WebAssembly to native code cannot generate good code for this &amp;ldquo;fallback&amp;rdquo; code, despite the fact that supporting arbitrary CFGs in WebAssembly comes with no downside in terms of runtime performance, security or correctness. Supporting arbitrary CFGs would massively simplify both the generation of WebAssembly by LLVM and the compilation of WebAssembly to native code&lt;sup class=&#34;footnote-ref&#34; id=&#34;fnref:compilation-to-native&#34;&gt;&lt;a href=&#34;#fn:compilation-to-native&#34;&gt;2&lt;/a&gt;&lt;/sup&gt;. WebAssembly control flow is a lossy conversion - we start with a CFG in LLVM which gets converted to WebAssembly control flow, then the native compiler converts that control flow back into a less-efficient CFG which then has optimisations applied and is then compiled to native. It would also allow GCC to generate WebAssembly - developers simply gave up implementing a WebAssembly backend for GCC as it was much too difficult to correctly implement a relooper-style algorithm over their CFG representation.&lt;/p&gt;
+
+&lt;h2 id=&#34;why-is-this-not-already-implemented&#34;&gt;Why is this not already implemented?&lt;/h2&gt;
+
+&lt;p&gt;Well for a start it requires arguments to blocks and multiple returns to be supported, neither of which are in the MVP. As for why those aren&amp;rsquo;t supported in the MVP, I don&amp;rsquo;t really have a good answer. As with my previous article, the question really comes down to WebAssembly&amp;rsquo;s history as a statically-typed binary encoding of JavaScript and the lack of serious implementations while the specification was being written. Unlike the previous article, I find it utterly baffling that the issues with compiling to WebAssembly&amp;rsquo;s inexpressive control flow from any modern compiler weren&amp;rsquo;t so glaringly obvious as to prevent the release of the MVP until they were fixed. I wasn&amp;rsquo;t there for the development of the specification though and so I can&amp;rsquo;t speak for what was going on behind the scenes.&lt;/p&gt;
+
+&lt;p&gt;Join us next time for a much more positive post with my ideas about how to fix some of these issues and more in the medium-term.&lt;/p&gt;
+&lt;div class=&#34;footnotes&#34;&gt;
+
+&lt;hr /&gt;
+
+&lt;ol&gt;
+&lt;li id=&#34;fn:macros&#34;&gt;The simplest compression method would be to implement macros - in the header you define a macro that takes some arguments and produces one or more instructions. Probably you&amp;rsquo;d want to restrict it to only generate balanced block start and end tags but that wouldn&amp;rsquo;t be necessary for correct behaviour.
+ &lt;a class=&#34;footnote-return&#34; href=&#34;#fnref:macros&#34;&gt;&lt;sup&gt;[return]&lt;/sup&gt;&lt;/a&gt;&lt;/li&gt;
+&lt;li id=&#34;fn:compilation-to-native&#34;&gt;I should note that it will only actually simplify the compilation to native for simple or streaming compilers, since for production-grade optimising compilers they convert the WebAssembly control flow back into a CFG.
+ &lt;a class=&#34;footnote-return&#34; href=&#34;#fnref:compilation-to-native&#34;&gt;&lt;sup&gt;[return]&lt;/sup&gt;&lt;/a&gt;&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/div&gt;
+</description>
+    </item>
     
     <item>
       <title>WebAssembly Troubles part 1: WebAssembly Is Not a Stack Machine</title>
@@ -21,6 +104,8 @@
 
 &lt;blockquote&gt;
 &lt;h3 id=&#34;preamble&#34;&gt;Preamble&lt;/h3&gt;
+
+&lt;p&gt;This is part 1 of a 3-part miniseries on issues with WebAssembly and proposals to fix them.&lt;/p&gt;
 
 &lt;p&gt;This article assumes some familiarity with virtual machines, compilers and WebAssembly, but I&amp;rsquo;ll try to link to relevant information where necessary so even if you&amp;rsquo;re not you can follow along.
 &lt;br/&gt;&lt;br/&gt;

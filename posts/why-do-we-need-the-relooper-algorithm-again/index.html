@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    
+    <title>WebAssembly Troubles part 2: Why Do We Need the Relooper Algorithm, Again?</title>
+    
+    <meta name="description" content="">
+    
+    <meta itemprop="name" content="WebAssembly Troubles part 2: Why Do We Need the Relooper Algorithm, Again?">
+    
+    
+    <meta name="og:title" content="WebAssembly Troubles part 2: Why Do We Need the Relooper Algorithm, Again?">
+    
+        <meta name="image" content="http://troubles.md/floppies.png">
+        <meta name="og:image" content="http://troubles.md/floppies.png">
+       <meta name="og:url" content="http://troubles.md/posts/why-do-we-need-the-relooper-algorithm-again/">
+    <meta name="og:site_name" content="WebAssembly Troubles part 2: Why Do We Need the Relooper Algorithm, Again?">
+    <meta name="og:type" content="article">
+    
+    <meta name="article:tag" content="">
+    <link rel="stylesheet" type="text/css" href="http://troubles.md/css/style.css">
+    <link rel="stylesheet" type="text/css" href="http://troubles.md/css/syntax.css">
+    <script async>
+        window.onload = function() {
+            var possibilities = [
+                 "A high-level view of low-level code",  "Writing words and reading DWORDS", 
+            ];
+
+            document.getElementById('subtitle').innerHTML = possibilities[Math.floor(possibilities.length * Math.random())];
+        };
+    </script>
+</head>
+
+<body>
+
+<header>
+    
+    <span>
+        <a href="http://troubles.md/" class="title"><strong>troubles.md</strong></a>
+        <span class="dash"> - </span><p id="subtitle" class="subtitle">A high-level view of low-level code</p>
+        
+        
+    </span>
+    
+    <a class="rss" href="http://troubles.md/index.xml">
+        <strong>
+            <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                class="feather feather-rss"
+            >
+                <path d="M4 11a9 9 0 0 1 9 9">
+                </path>
+                <path d="M4 4a16 16 0 0 1 16 16">
+                </path>
+                <circle cx="5" cy="19" r="1">
+                </circle>
+            </svg>
+        </strong>
+    </a>
+</header>
+
+
+<div class="content">
+  <h1>WebAssembly Troubles part 2: Why Do We Need the Relooper Algorithm, Again? <aside></aside></h1>
+  
+
+<blockquote>
+<h3 id="preamble">Preamble</h3>
+
+<p>This is part 2 of a 3-part miniseries on issues with WebAssembly and proposals to fix them. <a href="http://troubles.md/posts/wasm-is-not-a-stack-machine/">Part 1</a>.
+<br/><br/>
+This article assumes some familiarity with virtual machines, compilers and WebAssembly, but I&rsquo;ll try to link to relevant information where necessary so even if you&rsquo;re not you can follow along.
+<br/><br/>
+Also, this series is going to come off as if I dislike WebAssembly. I love WebAssembly! I wrote a <a href="http://troubles.md/posts/why-wasm/">whole article about how great it is</a>! In fact, I love it so much that I want it to be the best that it can be, and this series is me working through my complaints with the design in the hope that some or all of these issues can be addressed soon, while the ink is still somewhat wet on the specification.</p>
+</blockquote>
+
+<p>So if there&rsquo;s one thing people know about WebAssembly control flow, it&rsquo;s that it doesn&rsquo;t allow <code>goto</code>. <code>goto</code>, we&rsquo;re told, is <a href="https://homepages.cwi.nl/~storm/teaching/reader/Dijkstra68.pdf">considered harmful</a>, and so WebAssembly only implements simple control flow constructs:</p>
+
+<ul>
+<li><code>block</code>, which you can break to the end of;</li>
+<li><code>loop</code>, which you can jump to the header of;</li>
+<li><code>if</code>, which allows you to choose either the <code>then</code> or <code>else</code> branch depending on a condition;</li>
+<li><code>br</code>, which unconditionally jumps to a block&rsquo;s &ldquo;target&rdquo; (so the end for a <code>block</code> or <code>if</code>..<code>else</code> and the beginning for a loop);</li>
+<li><code>br_table</code>, which can jump to the target of one of many blocks based on a runtime value;</li>
+<li>and <code>br_if</code>, which either jumps to the block&rsquo;s target or continues depending on a condition.</li>
+</ul>
+
+<h2 id="redundancy">Redundancy</h2>
+
+<p>The eagle-eyed among you may have noticed that there is already some redundancy in those constructs. <code>if</code>..<code>else</code> can be implemented easily using <code>block</code> and <code>br_if</code>. It looks something like so:</p>
+<div class="highlight"><pre class="chroma"><code class="language-lisp" data-lang="lisp"><span class="c1">; Version using `if`</span>
+<span class="p">(</span><span class="nv">if</span> <span class="p">(</span><span class="nv">result</span> <span class="nv">i32</span><span class="p">)</span> <span class="nv">some_condition</span>
+  <span class="p">(</span><span class="nv">then</span>
+    <span class="c1">; ..then branch..</span>
+  <span class="p">)</span>
+  <span class="p">(</span><span class="nv">else</span>
+    <span class="c1">; ..else branch..</span>
+  <span class="p">))</span>
+<span class="c1">; Version using `block` and `br_if`</span>
+<span class="p">(</span><span class="nv">block</span> <span class="p">(</span><span class="nv">param</span> <span class="nv">$n</span> <span class="nv">i32</span><span class="p">)</span> <span class="p">(</span><span class="nv">result</span> <span class="nv">i32</span><span class="p">)</span>
+  <span class="p">(</span><span class="nv">block</span> <span class="p">(</span><span class="nv">param</span> <span class="nv">$n</span> <span class="nv">i32</span><span class="p">)</span> <span class="p">(</span><span class="nv">result</span> <span class="nv">i32</span><span class="p">)</span>
+    <span class="p">(</span><span class="nv">br_if</span> <span class="mi">0</span> <span class="nv">$n</span><span class="p">)</span>
+    <span class="c1">; ..then branch..</span>
+    <span class="p">(</span><span class="nv">br</span> <span class="mi">1</span><span class="p">))</span>
+  <span class="c1">; ..else branch..</span>
+<span class="p">)</span></code></pre></div>
+<p>Except whoops! No it isn&rsquo;t! In WebAssembly, blocks can&rsquo;t take arguments. I touch on this in my previous article but there&rsquo;s <a href="https://github.com/WebAssembly/multi-value/blob/master/proposals/multi-value/Overview.md">a proposal to fix this</a>. Let&rsquo;s say this gets fixed though, and blocks gain the ability to take arguments. In this case, not only are these two pieces of code identical, but even a baseline non-optimising compiler will produce identical assembly for both of them. The second one takes more bytes to represent but it&rsquo;s a simple recurring pattern, which makes it easy to write domain-specific compression for it<sup class="footnote-ref" id="fnref:macros"><a href="#fn:macros">1</a></sup>.</p>
+
+<h2 id="deeper-down-the-rabbit-hole">Deeper down the rabbit hole</h2>
+
+<p>It&rsquo;s not news to most programmers that really all of these constructs are redundant if WebAssembly had <code>goto</code>. If you had <code>goto</code> and some <code>goto_if</code> variant that conditionally jumped to a label you could implement all of these constructs. So why doesn&rsquo;t WebAssembly support <code>goto</code>?</p>
+
+<p>The classic argument against <code>goto</code> is that it leads to spaghetti code. No-one&rsquo;s writing raw WebAssembly though (or rather, most people aren&rsquo;t writing raw WebAssembly), so what&rsquo;s the problem? Well, WebAssembly does have some constraints, specifically it must produce code that is valid. WebAssembly is a stack machine, and you can&rsquo;t jump to just any label since that label might point to code that pops too many values off the stack, or pops the wrong types off the stack, or pushes too many values onto the stack. Essentially raw <code>goto</code>s allow you to do all kinds of evil stuff. What you really want is a list of <code>block</code>s like WebAssembly has now, each taking some number of arguments and returning some number of values onto the stack, and that you can call like function. Now you can have arbitrary flow between these blocks, like a typed version of <code>goto</code>.</p>
+
+<p>Now I&rsquo;m not some visionary genius and I didn&rsquo;t come up with this idea, nor was I the first to apply this to WebAssembly. The concept has been implemented in compilers for a very long time, where it is known as a [control flow graph][<a href="https://en.wikipedia.org/wiki/Control_flow_graph">https://en.wikipedia.org/wiki/Control_flow_graph</a>] or CFG. A CFG is usually combined with a code representation in SSA form, and if you&rsquo;ve read my previous article you probably know where this is going by now but let&rsquo;s work through it together anyway. As for implementing it in WebAssembly, I was introduced to this as it applies to WebAssembly by the author of the <a href="https://github.com/WebAssembly/funclets/blob/master/proposals/funclets/Overview.md">WebAssembly Funclets proposal</a>, which implements this basic idea.</p>
+
+<h2 id="why-bother">Why bother?</h2>
+
+<p>CFGs are the backbone of almost every static language compiler out there. Both LLVM and GCC use a CFG to combine the different control flow constructs like <code>for</code>, <code>while</code>, <code>if</code> and even <code>goto</code> into a single representation that can be used to define them all. This causes a problem for compiling to WebAssembly. Since WebAssembly doesn&rsquo;t allow arbitrary control-flow graphs, compilers have to detect when some set of nodes in the CFG can be represented using WebAssembly&rsquo;s control flow constructs and emit them, falling back to a complicated algorithm like <a href="http://mozakai.blogspot.com/2012/05/reloop-all-blocks.html">Relooper</a> or Stackifier (there&rsquo;s no documentation online, it&rsquo;s only mentioned by this name in LLVM internal discussions) to emulate complex control flow. Essentially the fallback algorithm converts the CFG into a the equivalent of a loop combined with a switch statement, which can be extremely slow.</p>
+
+<p>Currently compilers that convert WebAssembly to native code cannot generate good code for this &ldquo;fallback&rdquo; code, despite the fact that supporting arbitrary CFGs in WebAssembly comes with no downside in terms of runtime performance, security or correctness. Supporting arbitrary CFGs would massively simplify both the generation of WebAssembly by LLVM and the compilation of WebAssembly to native code<sup class="footnote-ref" id="fnref:compilation-to-native"><a href="#fn:compilation-to-native">2</a></sup>. WebAssembly control flow is a lossy conversion - we start with a CFG in LLVM which gets converted to WebAssembly control flow, then the native compiler converts that control flow back into a less-efficient CFG which then has optimisations applied and is then compiled to native. It would also allow GCC to generate WebAssembly - developers simply gave up implementing a WebAssembly backend for GCC as it was much too difficult to correctly implement a relooper-style algorithm over their CFG representation.</p>
+
+<h2 id="why-is-this-not-already-implemented">Why is this not already implemented?</h2>
+
+<p>Well for a start it requires arguments to blocks and multiple returns to be supported, neither of which are in the MVP. As for why those aren&rsquo;t supported in the MVP, I don&rsquo;t really have a good answer. As with my previous article, the question really comes down to WebAssembly&rsquo;s history as a statically-typed binary encoding of JavaScript and the lack of serious implementations while the specification was being written. Unlike the previous article, I find it utterly baffling that the issues with compiling to WebAssembly&rsquo;s inexpressive control flow from any modern compiler weren&rsquo;t so glaringly obvious as to prevent the release of the MVP until they were fixed. I wasn&rsquo;t there for the development of the specification though and so I can&rsquo;t speak for what was going on behind the scenes.</p>
+
+<p>Join us next time for a much more positive post with my ideas about how to fix some of these issues and more in the medium-term.</p>
+<div class="footnotes">
+
+<hr />
+
+<ol>
+<li id="fn:macros">The simplest compression method would be to implement macros - in the header you define a macro that takes some arguments and produces one or more instructions. Probably you&rsquo;d want to restrict it to only generate balanced block start and end tags but that wouldn&rsquo;t be necessary for correct behaviour.
+ <a class="footnote-return" href="#fnref:macros"><sup>[return]</sup></a></li>
+<li id="fn:compilation-to-native">I should note that it will only actually simplify the compilation to native for simple or streaming compilers, since for production-grade optimising compilers they convert the WebAssembly control flow back into a CFG.
+ <a class="footnote-return" href="#fnref:compilation-to-native"><sup>[return]</sup></a></li>
+</ol>
+</div>
+
+</div>
+
+<footer>
+	<p>© 2017-2018, all rights reserved.</a>
+</footer>
+</body>
+</html>

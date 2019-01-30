@@ -3,6 +3,11 @@
   xmlns:xhtml="http://www.w3.org/1999/xhtml">
   
   <url>
+    <loc>http://troubles.md/posts/why-do-we-need-the-relooper-algorithm-again/</loc>
+    <lastmod>2019-01-30T21:28:10+01:00</lastmod>
+  </url>
+  
+  <url>
     <loc>http://troubles.md/posts/wasm-is-not-a-stack-machine/</loc>
     <lastmod>2019-01-30T14:13:48+01:00</lastmod>
   </url>
@@ -74,7 +79,7 @@
   
   <url>
     <loc>http://troubles.md/posts/</loc>
-    <lastmod>2019-01-30T14:13:48+01:00</lastmod>
+    <lastmod>2019-01-30T21:28:10+01:00</lastmod>
     <priority>0</priority>
   </url>
   
@@ -85,7 +90,7 @@
   
   <url>
     <loc>http://troubles.md/</loc>
-    <lastmod>2019-01-30T14:13:48+01:00</lastmod>
+    <lastmod>2019-01-30T21:28:10+01:00</lastmod>
     <priority>0</priority>
   </url>
   
