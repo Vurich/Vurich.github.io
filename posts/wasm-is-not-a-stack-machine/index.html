@@ -108,7 +108,7 @@ Also, this series is going to come off as if I dislike WebAssembly. I love WebAs
 
 <p>If the IR is entirely in-memory this isn&rsquo;t so bad, especially if your code is in SSA form, but it means that you have to do extra work for the same quality of code and it means that a streaming compiler (like FireFox&rsquo;s Wasm baseline compiler) is unable to produce good code.</p>
 
-<p>You can, of course, add liveness analysis metadata to the machine, but that liveness analysis is only useful if your code is in SSA form - if it&rsquo;s not SSA form then the liveness is <em>extremely</em> course-grained.</p>
+<p>You can, of course, add liveness analysis metadata to the machine, but that liveness analysis is only useful if your code is in SSA form - if it&rsquo;s not SSA form then the liveness is <em>extremely</em> coarse-grained.</p>
 
 <p>Well, that&rsquo;s where WebAssembly comes in. See, WebAssembly has these things called locals. Locals are mutable variables that live for the lifetime of a function. Since WebAssembly blocks can&rsquo;t take arguments, they&rsquo;re the only way for blocks to receive data from outside. This includes stuff like loop counters, the classic example for SSA-defeating mutable variables, but it also includes regular blocks. For example:</p>
 <div class="highlight"><pre class="chroma"><code class="language-lisp" data-lang="lisp"><span class="p">(</span><span class="nv">func</span> <span class="p">(</span><span class="nv">result</span> <span class="nv">i32</span><span class="p">)</span>
