@@ -6,10 +6,143 @@
     <description>Recent content in Posts on troubles.md</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
-    <lastBuildDate>Wed, 30 Jan 2019 21:28:10 +0100</lastBuildDate>
+    <lastBuildDate>Thu, 31 Jan 2019 11:28:18 +0100</lastBuildDate>
     
         <atom:link href="http://troubles.md/posts/index.xml" rel="self" type="application/rss+xml" />
     
+    
+    <item>
+      <title>WebAssembly Troubles part 3: The Stack Is Not the Stack</title>
+      <link>http://troubles.md/posts/the-stack-is-not-the-stack/</link>
+      <pubDate>Thu, 31 Jan 2019 11:28:18 +0100</pubDate>
+      
+      <guid>http://troubles.md/posts/the-stack-is-not-the-stack/</guid>
+      <description>
+
+&lt;blockquote&gt;
+&lt;h3 id=&#34;preamble&#34;&gt;Preamble&lt;/h3&gt;
+
+&lt;p&gt;This is part 3 of a 4-part miniseries on issues with WebAssembly and proposals to fix them. &lt;a href=&#34;http://troubles.md/posts/wasm-is-not-a-stack-machine/&#34;&gt;Part 1 here&lt;/a&gt;, &lt;a href=&#34;http://troubles.md/posts/why-do-we-need-the-relooper-algorithm-again/&#34;&gt;part 2 here&lt;/a&gt;.
+&lt;br/&gt;&lt;br/&gt;
+This article assumes some familiarity with virtual machines, compilers and WebAssembly, but I&amp;rsquo;ll try to link to relevant information where necessary so even if you&amp;rsquo;re not you can follow along.
+&lt;br/&gt;&lt;br/&gt;
+Also, this series is going to come off as if I dislike WebAssembly. I love WebAssembly! I wrote a &lt;a href=&#34;http://troubles.md/posts/why-wasm/&#34;&gt;whole article about how great it is&lt;/a&gt;! In fact, I love it so much that I want it to be the best that it can be, and this series is me working through my complaints with the design in the hope that some or all of these issues can be addressed soon, while the ink is still somewhat wet on the specification.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;If you read my &lt;a href=&#34;http://troubles.md/posts/wasm-is-not-a-stack-machine/&#34;&gt;first article in this series&lt;/a&gt;, you&amp;rsquo;ll know that WebAssembly has both locals and the stack. I made the argument that locals are not just unnecessary, but are detrimental to the performance of WebAssembly in general, and that everything could be done with the stack alone since this essentially puts our code into SSA form with lifetime information. However, if you&amp;rsquo;re familiar with LLVM IR or other SSA IRs you might be familiar with an operator known as &lt;code&gt;alloca&lt;/code&gt;, which circumvents SSA form. Why does LLVM need that escape hatch while I argue that WebAssembly does not?&lt;/p&gt;
+
+&lt;p&gt;Well, here&amp;rsquo;s a thought experiment for you: what WebAssembly does LLVM emit for the following Rust code?&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;&lt;span class=&#34;k&#34;&gt;extern&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;k&#34;&gt;fn&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;test&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;_&lt;/span&gt;: &lt;span class=&#34;kp&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;nc&#34;&gt;mut&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;kt&#34;&gt;u32&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;);&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;fn&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;main&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(){&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;kd&#34;&gt;let&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;k&#34;&gt;mut&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;a&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;o&#34;&gt;=&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;k&#34;&gt;unsafe&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;test&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;mut&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;a&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;};&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;In LLVM&amp;rsquo;s IR this is represented using &lt;code&gt;alloca&lt;/code&gt;, which allocates a value on the physical stack and returns a pointer to the new value. In WebAssembly, however, you cannot create pointers to locals, so &lt;code&gt;alloca&lt;/code&gt; has to be compiled another way. Let&amp;rsquo;s have a look at the emitted WebAssembly when compiled in release mode. I&amp;rsquo;ve simplified it by hand to make it clearer what&amp;rsquo;s going on.&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-lisp&#34; data-lang=&#34;lisp&#34;&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;module&lt;/span&gt;
+  &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;import&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;&amp;#34;env&amp;#34;&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;&amp;#34;test&amp;#34;&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;nv&#34;&gt;$test&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;param&lt;/span&gt; &lt;span class=&#34;nv&#34;&gt;i32&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)))&lt;/span&gt;
+  &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;func&lt;/span&gt; &lt;span class=&#34;nv&#34;&gt;$main&lt;/span&gt;
+    &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;local&lt;/span&gt; &lt;span class=&#34;nv&#34;&gt;$local_sp&lt;/span&gt; &lt;span class=&#34;nv&#34;&gt;i32&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+    &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;global.set&lt;/span&gt; &lt;span class=&#34;nv&#34;&gt;$stack_ptr&lt;/span&gt;
+      &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;local.tee&lt;/span&gt; &lt;span class=&#34;nv&#34;&gt;$local_sp&lt;/span&gt;
+        &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;i32.sub&lt;/span&gt;
+          &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;global.get&lt;/span&gt; &lt;span class=&#34;nv&#34;&gt;$stack_ptr&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+          &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;i32.const&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;16&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;))))&lt;/span&gt;
+    &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;i32.store&lt;/span&gt; &lt;span class=&#34;nv&#34;&gt;offset=12&lt;/span&gt;
+      &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;local.get&lt;/span&gt; &lt;span class=&#34;nv&#34;&gt;$local_sp&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+      &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;i32.const&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;))&lt;/span&gt;
+    &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;call&lt;/span&gt; &lt;span class=&#34;nv&#34;&gt;$test&lt;/span&gt;
+      &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;i32.add&lt;/span&gt;
+        &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;local.get&lt;/span&gt; &lt;span class=&#34;nv&#34;&gt;$local_sp&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+        &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;i32.const&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;12&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)))&lt;/span&gt;
+    &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;global.set&lt;/span&gt; &lt;span class=&#34;nv&#34;&gt;$stack_ptr&lt;/span&gt;
+      &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;i32.add&lt;/span&gt;
+        &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;local.get&lt;/span&gt; &lt;span class=&#34;nv&#34;&gt;$local_sp&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+        &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;i32.const&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;16&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;))))&lt;/span&gt;
+  &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;memory&lt;/span&gt; &lt;span class=&#34;nv&#34;&gt;$memory&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;export&lt;/span&gt; &lt;span class=&#34;s&#34;&gt;&amp;#34;memory&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;17&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;
+  &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;global&lt;/span&gt; &lt;span class=&#34;nv&#34;&gt;$stack_ptr&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;mut&lt;/span&gt; &lt;span class=&#34;nv&#34;&gt;i32&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;nv&#34;&gt;i32.const&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;1048576&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)))&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Gross. LLVM generates a mutable global (similar to &lt;code&gt;static mut&lt;/code&gt; in Rust) which it then does arithmetic manually on to manipulate the stack. Accessing the stack is suppposed to be extremely fast, and in fact if you compile the Rust code directly to native it looks something like this&lt;sup class=&#34;footnote-ref&#34; id=&#34;fnref:why-push-pop&#34;&gt;&lt;a href=&#34;#fn:why-push-pop&#34;&gt;1&lt;/a&gt;&lt;/sup&gt;:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-gas&#34; data-lang=&#34;gas&#34;&gt;&lt;span class=&#34;nl&#34;&gt;main:&lt;/span&gt;
+    &lt;span class=&#34;nf&#34;&gt;push&lt;/span&gt; &lt;span class=&#34;no&#34;&gt;rax&lt;/span&gt;
+    &lt;span class=&#34;nf&#34;&gt;mov&lt;/span&gt;  &lt;span class=&#34;no&#34;&gt;dword&lt;/span&gt; &lt;span class=&#34;no&#34;&gt;ptr&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;no&#34;&gt;rsp&lt;/span&gt; &lt;span class=&#34;err&#34;&gt;+&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;4&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;],&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt;
+    &lt;span class=&#34;nf&#34;&gt;lea&lt;/span&gt;  &lt;span class=&#34;no&#34;&gt;rdi&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;                 &lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;no&#34;&gt;rsp&lt;/span&gt; &lt;span class=&#34;err&#34;&gt;+&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;4&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt;
+    &lt;span class=&#34;nf&#34;&gt;call&lt;/span&gt; &lt;span class=&#34;no&#34;&gt;qword&lt;/span&gt; &lt;span class=&#34;no&#34;&gt;ptr&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;no&#34;&gt;rip&lt;/span&gt; &lt;span class=&#34;err&#34;&gt;+&lt;/span&gt; &lt;span class=&#34;no&#34;&gt;test@GOTPCREL&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt;
+    &lt;span class=&#34;nf&#34;&gt;pop&lt;/span&gt;  &lt;span class=&#34;no&#34;&gt;rax&lt;/span&gt;
+    &lt;span class=&#34;nf&#34;&gt;ret&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Contrast this assembly output with the assembly generated by firefox for the above Wasm (simplified):&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-gas&#34; data-lang=&#34;gas&#34;&gt;&lt;span class=&#34;nl&#34;&gt;main:&lt;/span&gt;
+  &lt;span class=&#34;nf&#34;&gt;sub&lt;/span&gt; &lt;span class=&#34;no&#34;&gt;rsp&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;                         &lt;span class=&#34;mi&#34;&gt;0x28&lt;/span&gt;
+  &lt;span class=&#34;nf&#34;&gt;cmp&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;no&#34;&gt;r14&lt;/span&gt; &lt;span class=&#34;err&#34;&gt;+&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;0x28&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;],&lt;/span&gt;                &lt;span class=&#34;no&#34;&gt;rsp&lt;/span&gt;
+  &lt;span class=&#34;c&#34;&gt;; .Lstack-overflow is defined elsewhere
+&lt;/span&gt;&lt;span class=&#34;c&#34;&gt;&lt;/span&gt;  &lt;span class=&#34;nf&#34;&gt;jae&lt;/span&gt; &lt;span class=&#34;no&#34;&gt;.Lstack-overflow&lt;/span&gt; 
+
+  &lt;span class=&#34;no&#34;&gt;mov&lt;/span&gt; &lt;span class=&#34;no&#34;&gt;edi&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;                         &lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;no&#34;&gt;r14&lt;/span&gt; &lt;span class=&#34;err&#34;&gt;+&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;0x50&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt;
+  &lt;span class=&#34;nf&#34;&gt;mov&lt;/span&gt; &lt;span class=&#34;no&#34;&gt;eax&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;                         &lt;span class=&#34;no&#34;&gt;edi&lt;/span&gt;
+  &lt;span class=&#34;nf&#34;&gt;sub&lt;/span&gt; &lt;span class=&#34;no&#34;&gt;eax&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;                         &lt;span class=&#34;mi&#34;&gt;0x10&lt;/span&gt;
+  &lt;span class=&#34;nf&#34;&gt;mov&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;no&#34;&gt;rsp&lt;/span&gt; &lt;span class=&#34;err&#34;&gt;+&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;0x1c&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;],&lt;/span&gt;                &lt;span class=&#34;no&#34;&gt;eax&lt;/span&gt;
+  &lt;span class=&#34;nf&#34;&gt;mov&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;no&#34;&gt;r14&lt;/span&gt; &lt;span class=&#34;err&#34;&gt;+&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;0x50&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;],&lt;/span&gt;                &lt;span class=&#34;no&#34;&gt;eax&lt;/span&gt;
+  &lt;span class=&#34;nf&#34;&gt;mov&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;no&#34;&gt;r15&lt;/span&gt; &lt;span class=&#34;err&#34;&gt;+&lt;/span&gt; &lt;span class=&#34;no&#34;&gt;rax&lt;/span&gt; &lt;span class=&#34;err&#34;&gt;+&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;0xc&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;],&lt;/span&gt;           &lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt;
+  &lt;span class=&#34;nf&#34;&gt;add&lt;/span&gt; &lt;span class=&#34;no&#34;&gt;edi&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;                         &lt;span class=&#34;p&#34;&gt;-&lt;/span&gt;&lt;span class=&#34;mi&#34;&gt;4&lt;/span&gt;
+  &lt;span class=&#34;nf&#34;&gt;mov&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;no&#34;&gt;rsp&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;],&lt;/span&gt;                       &lt;span class=&#34;no&#34;&gt;r14&lt;/span&gt;
+  &lt;span class=&#34;nf&#34;&gt;mov&lt;/span&gt; &lt;span class=&#34;no&#34;&gt;rax&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;                         &lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;no&#34;&gt;r14&lt;/span&gt; &lt;span class=&#34;err&#34;&gt;+&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;0x30&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt;
+  &lt;span class=&#34;nf&#34;&gt;mov&lt;/span&gt; &lt;span class=&#34;no&#34;&gt;r14&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;                         &lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;no&#34;&gt;r14&lt;/span&gt; &lt;span class=&#34;err&#34;&gt;+&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;0x38&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt;
+  &lt;span class=&#34;nf&#34;&gt;mov&lt;/span&gt; &lt;span class=&#34;no&#34;&gt;r15&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;                         &lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;no&#34;&gt;r14&lt;/span&gt; &lt;span class=&#34;err&#34;&gt;+&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;0x18&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt;
+  &lt;span class=&#34;nf&#34;&gt;call&lt;/span&gt; &lt;span class=&#34;no&#34;&gt;rax&lt;/span&gt;
+  &lt;span class=&#34;nf&#34;&gt;mov&lt;/span&gt; &lt;span class=&#34;no&#34;&gt;r14&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;                         &lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;no&#34;&gt;rsp&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt;
+  &lt;span class=&#34;nf&#34;&gt;mov&lt;/span&gt; &lt;span class=&#34;no&#34;&gt;r15&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;                         &lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;no&#34;&gt;r14&lt;/span&gt; &lt;span class=&#34;err&#34;&gt;+&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;0x18&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt;
+  &lt;span class=&#34;nf&#34;&gt;mov&lt;/span&gt; &lt;span class=&#34;no&#34;&gt;eax&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;                         &lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;no&#34;&gt;rsp&lt;/span&gt; &lt;span class=&#34;err&#34;&gt;+&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;0x1c&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt;
+  &lt;span class=&#34;nf&#34;&gt;add&lt;/span&gt; &lt;span class=&#34;no&#34;&gt;eax&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;                         &lt;span class=&#34;mi&#34;&gt;0x10&lt;/span&gt;
+  &lt;span class=&#34;nf&#34;&gt;mov&lt;/span&gt; &lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;no&#34;&gt;r14&lt;/span&gt; &lt;span class=&#34;err&#34;&gt;+&lt;/span&gt; &lt;span class=&#34;mi&#34;&gt;0x50&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;],&lt;/span&gt;                &lt;span class=&#34;no&#34;&gt;eax&lt;/span&gt;
+  &lt;span class=&#34;nf&#34;&gt;nop&lt;/span&gt;
+  &lt;span class=&#34;nf&#34;&gt;add&lt;/span&gt; &lt;span class=&#34;no&#34;&gt;rsp&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;                         &lt;span class=&#34;mi&#34;&gt;0x28&lt;/span&gt;
+  &lt;span class=&#34;nf&#34;&gt;ret&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Some of this is important for WebAssembly&amp;rsquo;s sandboxing, but I hope you can see that the &amp;ldquo;stack_ptr&amp;rdquo; global is being loaded and stored to memory every time. This isn&amp;rsquo;t the baseline compiler, this is Firefox&amp;rsquo;s optimising compiler, and as far as I can tell Firefox&amp;rsquo;s output for WebAssembly is the fastest of any browser at time of writing.&lt;/p&gt;
+
+&lt;p&gt;So how do we solve this?&lt;/p&gt;
+
+&lt;h2 id=&#34;separate-stack-and-heap&#34;&gt;Separate stack and heap&lt;/h2&gt;
+
+&lt;p&gt;The fix that I originally wanted to implement for this is to either have an &lt;code&gt;alloca&lt;/code&gt; instruction or have each function/block declare a set of variables to be stored on the physical stack. Unfortunately, this is a total non-starter. Currently pointers in Wasm are just a &lt;code&gt;u32&lt;/code&gt; (Wasm has one type for both signed and unsigned integers so you&amp;rsquo;ll see it referred to as &lt;code&gt;i32&lt;/code&gt; in the spec), which means that arbitrary arithmetic can be performed on them. If you want the stack pointers to refer to the &amp;ldquo;physical stack&amp;rdquo; (the area of memory around &lt;code&gt;rsp&lt;/code&gt;, like LLVM generates when generating native code) you&amp;rsquo;re out of luck since a malicious Wasm module could just manipulate a stack pointer and overwrite the return address. PNaCl implements this method and prevents the return address from being manipulated by masking the return address when the function returns, which ensures that you can only jump to known-safe addresses. Unfortunately, manipulating the return address like this means that every single function call results in a pipeline stall since the CPU can&amp;rsquo;t start speculatively executing the return value.&lt;/p&gt;
+
+&lt;p&gt;That&amp;rsquo;s not the only problem though. Currently, the Wasm heap is untyped, which is very important for efficient compilation of languages like C and Rust that rely on viewing the heap as a blob of bytes. Heap pointers are just indices into a blob of memory. If the heap and stack were separate, there would be no good way to compile this code:&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;&lt;span class=&#34;k&#34;&gt;fn&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;main&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;kd&#34;&gt;let&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;foo&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;o&#34;&gt;=&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;nb&#34;&gt;Box&lt;/span&gt;::&lt;span class=&#34;n&#34;&gt;new&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;);&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;kd&#34;&gt;let&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;bar&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;o&#34;&gt;=&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;mi&#34;&gt;1&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;kd&#34;&gt;let&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;some_vec&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;o&#34;&gt;=&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;vec&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;!&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;amp;*&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;foo&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;bar&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;];&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;
+&lt;p&gt;Here we&amp;rsquo;re storing one heap pointer and one stack pointer in an array which is itself stored on the heap. Separated stack and heap pointers means that this is impossible - you either need the heap to be typed or you need to allow manipulating the pointer to the stack value, which could cause the wasm to overwrite memory that it shouldn&amp;rsquo;t have access to.&lt;/p&gt;
+
+&lt;p&gt;A variant of this idea that would be more likely to work is to have our method of specifying variables to be stored on the physical stack also specify a linear memory section to store the stack values in. This would basically have the same semantics as the current implementation it would give the compiler more information and make it more able to optimise. However, I don&amp;rsquo;t believe that this would produce better code than option 2:&lt;/p&gt;
+
+&lt;h2 id=&#34;explicit-stack-pointer&#34;&gt;Explicit stack pointer&lt;/h2&gt;
+
+&lt;p&gt;&amp;ldquo;So&amp;rdquo;, you ask, &amp;ldquo;why not just reserve a register for this global variable?&amp;rdquo;. Well I&amp;rsquo;m glad you asked, straw man in my head. Although it wouldn&amp;rsquo;t solve every problem, having the stack pointer be stored in a global variable would improve performance significantly and allow for much better code. It still couldn&amp;rsquo;t match native, but it would get a lot closer.&lt;/p&gt;
+
+&lt;p&gt;The issue is that the global used for the stack pointer isn&amp;rsquo;t marked. The Wasm-&amp;gt;native compiler doesn&amp;rsquo;t know that &lt;code&gt;stack_ptr&lt;/code&gt; is the stack pointer and so needs to be fast to access.&lt;/p&gt;
+
+&lt;p&gt;So, the second possibility - which I believe has been suggested before although I can&amp;rsquo;t find the issue where it was mentioned - is to explicitly mark one or more globals as &amp;ldquo;hot&amp;rdquo;, which can act as a hint to the compiler that a register should be reserved for this global. The stack pointer can then be marked as &amp;ldquo;hot&amp;rdquo; and WebAssembly runtimes that don&amp;rsquo;t care about maximising performance (like the spec interpreter or &lt;a href=&#34;https://github.com/paritytech/wasmi&#34;&gt;wasmi&lt;/a&gt;) can ignore it. The biggest downside to this scheme is that it uses up one more register that could have been used for intermediate results. If your compiler has decent instruction choice then codegen with this scheme should look relatively similar to the native code generated by LLVM. Unlike more complicated optimisations, I would consider implementing a good instruction choice algorithm to be the main job of a compiler from WebAssembly to native, so it wouldn&amp;rsquo;t require extra, stack pointer-specific work in order to get this to compile to good code - work done improving codegen for this case will improve codegen everywhere.&lt;/p&gt;
+
+&lt;p&gt;Personally, I believe that the second option is the best.&lt;/p&gt;
+
+&lt;h2 id=&#34;why-isn-t-this-implemented-already&#34;&gt;Why isn&amp;rsquo;t this implemented already?&lt;/h2&gt;
+
+&lt;p&gt;Unlike the past two articles, this is pretty clearly not a fundamental design issue that should have be fixed for the MVP. This can easily be added in a backwards-compatible way - existing code can&amp;rsquo;t take advantage of this optimisation but any new code will be able to. Hopefully this article gave you some insight into why the stack isn&amp;rsquo;t quite as optimised as it should be in contemporary WebAssembly runtimes.&lt;/p&gt;
+
+&lt;p&gt;Join me next time where I finally inject some positivity into this series, and propose a medium-term solution to these issues and more. I won&amp;rsquo;t even have to fight Google.&lt;/p&gt;
+&lt;div class=&#34;footnotes&#34;&gt;
+
+&lt;hr /&gt;
+
+&lt;ol&gt;
+&lt;li id=&#34;fn:why-push-pop&#34;&gt;The &lt;code&gt;push&lt;/code&gt; and &lt;code&gt;pop&lt;/code&gt; are to reserve space on the stack, it&amp;rsquo;s better if you need to reserve &amp;lt;8 bytes to use &lt;code&gt;push&lt;/code&gt; and &lt;code&gt;pop&lt;/code&gt; instead of doing arithmetic on the stack pointer yourself.
+ &lt;a class=&#34;footnote-return&#34; href=&#34;#fnref:why-push-pop&#34;&gt;&lt;sup&gt;[return]&lt;/sup&gt;&lt;/a&gt;&lt;/li&gt;
+&lt;/ol&gt;
+&lt;/div&gt;
+</description>
+    </item>
     
     <item>
       <title>WebAssembly Troubles part 2: Why Do We Need the Relooper Algorithm, Again?</title>
