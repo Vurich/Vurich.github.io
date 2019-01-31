@@ -99,7 +99,7 @@ Also, this series is going to come off as if I dislike WebAssembly. I love WebAs
 
 <p>The eagle-eyed among you may have noticed that there is already some redundancy in those constructs. <code>if</code>..<code>else</code> can be implemented easily using <code>block</code> and <code>br_if</code>. It looks something like so:</p>
 <div class="highlight"><pre class="chroma"><code class="language-lisp" data-lang="lisp"><span class="c1">; Version using `if`</span>
-<span class="p">(</span><span class="nv">if</span> <span class="p">(</span><span class="nv">result</span> <span class="nv">i32</span><span class="p">)</span> <span class="nv">some_condition</span>
+<span class="p">(</span><span class="nv">if</span> <span class="p">(</span><span class="nv">result</span> <span class="nv">i32</span><span class="p">)</span> <span class="nv">$cond</span>
   <span class="p">(</span><span class="nv">then</span>
     <span class="c1">; ..then branch..</span>
   <span class="p">)</span>
@@ -107,9 +107,9 @@ Also, this series is going to come off as if I dislike WebAssembly. I love WebAs
     <span class="c1">; ..else branch..</span>
   <span class="p">))</span>
 <span class="c1">; Version using `block` and `br_if`</span>
-<span class="p">(</span><span class="nv">block</span> <span class="p">(</span><span class="nv">param</span> <span class="nv">$n</span> <span class="nv">i32</span><span class="p">)</span> <span class="p">(</span><span class="nv">result</span> <span class="nv">i32</span><span class="p">)</span>
-  <span class="p">(</span><span class="nv">block</span> <span class="p">(</span><span class="nv">param</span> <span class="nv">$n</span> <span class="nv">i32</span><span class="p">)</span> <span class="p">(</span><span class="nv">result</span> <span class="nv">i32</span><span class="p">)</span>
-    <span class="p">(</span><span class="nv">br_if</span> <span class="mi">0</span> <span class="nv">$n</span><span class="p">)</span>
+<span class="p">(</span><span class="nv">block</span> <span class="p">(</span><span class="nv">param</span> <span class="nv">$cond</span> <span class="nv">i32</span><span class="p">)</span> <span class="p">(</span><span class="nv">result</span> <span class="nv">i32</span><span class="p">)</span>
+  <span class="p">(</span><span class="nv">block</span> <span class="p">(</span><span class="nv">param</span> <span class="nv">$cond</span> <span class="nv">i32</span><span class="p">)</span> <span class="p">(</span><span class="nv">result</span> <span class="nv">i32</span><span class="p">)</span>
+    <span class="p">(</span><span class="nv">br_if</span> <span class="mi">0</span> <span class="nv">$cond</span><span class="p">)</span>
     <span class="c1">; ..then branch..</span>
     <span class="p">(</span><span class="nv">br</span> <span class="mi">1</span><span class="p">))</span>
   <span class="c1">; ..else branch..</span>
