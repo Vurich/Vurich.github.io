@@ -22,7 +22,7 @@
 &lt;blockquote&gt;
 &lt;h3 id=&#34;preamble&#34;&gt;Preamble&lt;/h3&gt;
 
-&lt;p&gt;This is part 2 of a 3-part miniseries on issues with WebAssembly and proposals to fix them. &lt;a href=&#34;http://troubles.md/posts/wasm-is-not-a-stack-machine/&#34;&gt;Part 1&lt;/a&gt;.
+&lt;p&gt;This is part 2 of a 4-part miniseries on issues with WebAssembly and proposals to fix them. &lt;a href=&#34;http://troubles.md/posts/wasm-is-not-a-stack-machine/&#34;&gt;Part 1 here&lt;/a&gt;.
 &lt;br/&gt;&lt;br/&gt;
 This article assumes some familiarity with virtual machines, compilers and WebAssembly, but I&amp;rsquo;ll try to link to relevant information where necessary so even if you&amp;rsquo;re not you can follow along.
 &lt;br/&gt;&lt;br/&gt;
@@ -73,13 +73,13 @@ Also, this series is going to come off as if I dislike WebAssembly. I love WebAs
 
 &lt;p&gt;CFGs are the backbone of almost every static language compiler out there. Both LLVM and GCC use a CFG to combine the different control flow constructs like &lt;code&gt;for&lt;/code&gt;, &lt;code&gt;while&lt;/code&gt;, &lt;code&gt;if&lt;/code&gt; and even &lt;code&gt;goto&lt;/code&gt; into a single representation that can be used to define them all. This causes a problem for compiling to WebAssembly. Since WebAssembly doesn&amp;rsquo;t allow arbitrary control-flow graphs, compilers have to detect when some set of nodes in the CFG can be represented using WebAssembly&amp;rsquo;s control flow constructs and emit them, falling back to a complicated algorithm like &lt;a href=&#34;http://mozakai.blogspot.com/2012/05/reloop-all-blocks.html&#34;&gt;Relooper&lt;/a&gt; or Stackifier (there&amp;rsquo;s no documentation online, it&amp;rsquo;s only mentioned by this name in LLVM internal discussions) to emulate complex control flow. Essentially the fallback algorithm converts the CFG into a the equivalent of a loop combined with a switch statement, which can be extremely slow.&lt;/p&gt;
 
-&lt;p&gt;Currently compilers that convert WebAssembly to native code cannot generate good code for this &amp;ldquo;fallback&amp;rdquo; code, despite the fact that supporting arbitrary CFGs in WebAssembly comes with no downside in terms of runtime performance, security or correctness. Supporting arbitrary CFGs would massively simplify both the generation of WebAssembly by LLVM and the compilation of WebAssembly to native code&lt;sup class=&#34;footnote-ref&#34; id=&#34;fnref:compilation-to-native&#34;&gt;&lt;a href=&#34;#fn:compilation-to-native&#34;&gt;2&lt;/a&gt;&lt;/sup&gt;. WebAssembly control flow is a lossy conversion - we start with a CFG in LLVM which gets converted to WebAssembly control flow, then the native compiler converts that control flow back into a less-efficient CFG which then has optimisations applied and is then compiled to native. It would also allow GCC to generate WebAssembly - developers simply gave up implementing a WebAssembly backend for GCC as it was much too difficult to correctly implement a relooper-style algorithm over their CFG representation.&lt;/p&gt;
+&lt;p&gt;Currently compilers that convert WebAssembly to native code cannot generate good code for this &amp;ldquo;fallback&amp;rdquo; code, despite the fact that supporting arbitrary CFGs in WebAssembly comes with no downside in terms of runtime performance, security or correctness. WebAssembly control flow is a lossy conversion - we start with a CFG in LLVM which gets converted to WebAssembly control flow, then the native compiler converts that control flow back into a less-efficient CFG which then has optimisations applied and is then compiled to native. For most compilers the only way to get efficient code is to detect the loop-and-switch emitted by relooper and stackifier and convert it back into the arbitrary CFG that it started as. You&amp;rsquo;re basically having to write a slow, error-prone algorithm to convert a CFG to Wasm and then another slow, error-prone algorithm to convert the Wasm back into the CFG that it started as. No wonder GCC developers simply gave up implementing a WebAssembly backend as it was much too difficult to correctly implement a relooper-style algorithm over their CFG representation.&lt;/p&gt;
 
 &lt;h2 id=&#34;why-is-this-not-already-implemented&#34;&gt;Why is this not already implemented?&lt;/h2&gt;
 
-&lt;p&gt;Well for a start it requires arguments to blocks and multiple returns to be supported, neither of which are in the MVP. As for why those aren&amp;rsquo;t supported in the MVP, I don&amp;rsquo;t really have a good answer. As with my previous article, the question really comes down to WebAssembly&amp;rsquo;s history as a statically-typed binary encoding of JavaScript and the lack of serious implementations while the specification was being written. Unlike the previous article, I find it utterly baffling that the issues with compiling to WebAssembly&amp;rsquo;s inexpressive control flow from any modern compiler weren&amp;rsquo;t so glaringly obvious as to prevent the release of the MVP until they were fixed. I wasn&amp;rsquo;t there for the development of the specification though and so I can&amp;rsquo;t speak for what was going on behind the scenes.&lt;/p&gt;
+&lt;p&gt;Well for a start it requires arguments to blocks and multiple returns to be supported, neither of which are in the MVP. As for why those aren&amp;rsquo;t supported in the MVP, I don&amp;rsquo;t really have a good answer. As with my previous article, the question really comes down to WebAssembly&amp;rsquo;s history as a statically-typed binary encoding of JavaScript and the lack of serious implementations while the specification was being written. Unlike the previous article, I find it utterly baffling that the issues with compiling to WebAssembly&amp;rsquo;s inexpressive control flow from any modern compiler weren&amp;rsquo;t so glaringly obvious as to prevent the release of the MVP until they were fixed. I wasn&amp;rsquo;t there for the development of the specification though and so I can&amp;rsquo;t speak for what was going on behind the scenes. One major roadblock to the adoption of arbitrary CFGs is that I believe that V8 is an exception to most compilers in that it doesn&amp;rsquo;t represent code as a CFG at all - it maintains roughly JS-compatible control flow all the way from front-end to codegen.&lt;/p&gt;
 
-&lt;p&gt;Join us next time for a much more positive post with my ideas about how to fix some of these issues and more in the medium-term.&lt;/p&gt;
+&lt;p&gt;Join us next time for a peek at the stack. I promise that this will be the last negative post.&lt;/p&gt;
 &lt;div class=&#34;footnotes&#34;&gt;
 
 &lt;hr /&gt;
@@ -87,8 +87,6 @@ Also, this series is going to come off as if I dislike WebAssembly. I love WebAs
 &lt;ol&gt;
 &lt;li id=&#34;fn:macros&#34;&gt;The simplest compression method would be to implement macros - in the header you define a macro that takes some arguments and produces one or more instructions. Probably you&amp;rsquo;d want to restrict it to only generate balanced block start and end tags but that wouldn&amp;rsquo;t be necessary for correct behaviour.
  &lt;a class=&#34;footnote-return&#34; href=&#34;#fnref:macros&#34;&gt;&lt;sup&gt;[return]&lt;/sup&gt;&lt;/a&gt;&lt;/li&gt;
-&lt;li id=&#34;fn:compilation-to-native&#34;&gt;I should note that it will only actually simplify the compilation to native for simple or streaming compilers, since for production-grade optimising compilers they convert the WebAssembly control flow back into a CFG.
- &lt;a class=&#34;footnote-return&#34; href=&#34;#fnref:compilation-to-native&#34;&gt;&lt;sup&gt;[return]&lt;/sup&gt;&lt;/a&gt;&lt;/li&gt;
 &lt;/ol&gt;
 &lt;/div&gt;
 </description>
@@ -105,7 +103,7 @@ Also, this series is going to come off as if I dislike WebAssembly. I love WebAs
 &lt;blockquote&gt;
 &lt;h3 id=&#34;preamble&#34;&gt;Preamble&lt;/h3&gt;
 
-&lt;p&gt;This is part 1 of a 3-part miniseries on issues with WebAssembly and proposals to fix them.&lt;/p&gt;
+&lt;p&gt;This is part 1 of a 4-part miniseries on issues with WebAssembly and proposals to fix them.&lt;/p&gt;
 
 &lt;p&gt;This article assumes some familiarity with virtual machines, compilers and WebAssembly, but I&amp;rsquo;ll try to link to relevant information where necessary so even if you&amp;rsquo;re not you can follow along.
 &lt;br/&gt;&lt;br/&gt;
