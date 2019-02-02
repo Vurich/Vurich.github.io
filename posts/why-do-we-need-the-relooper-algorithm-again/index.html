@@ -25,7 +25,7 @@
     <script async>
         window.onload = function() {
             var possibilities = [
-                 "A high-level view of low-level code",  "Writing words and reading DWORDS", 
+                 "A high-level view of low-level code",  "Writing words and reading DWORDS",  "Asm, Wasm and the chasm of despair", 
             ];
 
             document.getElementById('subtitle').innerHTML = possibilities[Math.floor(possibilities.length * Math.random())];
@@ -110,17 +110,17 @@ Also, this series is going to come off as if I dislike WebAssembly. I love WebAs
 <span class="p">(</span><span class="nv">block</span> <span class="p">(</span><span class="nv">param</span> <span class="nv">$cond</span> <span class="nv">i32</span><span class="p">)</span> <span class="p">(</span><span class="nv">result</span> <span class="nv">i32</span><span class="p">)</span>
   <span class="p">(</span><span class="nv">block</span> <span class="p">(</span><span class="nv">param</span> <span class="nv">$cond</span> <span class="nv">i32</span><span class="p">)</span> <span class="p">(</span><span class="nv">result</span> <span class="nv">i32</span><span class="p">)</span>
     <span class="p">(</span><span class="nv">br_if</span> <span class="mi">0</span> <span class="nv">$cond</span><span class="p">)</span>
-    <span class="c1">; ..then branch..</span>
+    <span class="c1">; ..else branch..</span>
     <span class="p">(</span><span class="nv">br</span> <span class="mi">1</span><span class="p">))</span>
-  <span class="c1">; ..else branch..</span>
+  <span class="c1">; ..then branch..</span>
 <span class="p">)</span></code></pre></div>
-<p>Except whoops! That doesn&rsquo;t work! In WebAssembly, blocks can&rsquo;t take arguments. I touch on this in my previous article but there&rsquo;s <a href="https://github.com/WebAssembly/multi-value/blob/master/proposals/multi-value/Overview.md">a proposal to fix this</a>. Let&rsquo;s say this gets fixed though, and blocks gain the ability to take arguments. In this case, not only are these two pieces of code identical, but even a baseline non-optimising compiler will produce identical assembly for both of them. The second one takes more bytes to represent but it&rsquo;s a simple recurring pattern, which makes it easy to write domain-specific compression for it<sup class="footnote-ref" id="fnref:macros"><a href="#fn:macros">1</a></sup>.</p>
+<p>Except whoops! That doesn&rsquo;t work! In the current version of WebAssembly, blocks can&rsquo;t take arguments and so the only way to implement <code>if</code> with <code>block</code>/<code>br_if</code> is with locals, which without extra optimisations are significantly less efficient. I touch on this in my previous article but there&rsquo;s <a href="https://github.com/WebAssembly/multi-value/blob/master/proposals/multi-value/Overview.md">a proposal to fix this</a>. Let&rsquo;s say this gets fixed though, and blocks gain the ability to take arguments. In this case, not only are these two pieces of code identical, but even a baseline non-optimising compiler will produce identical assembly for both of them. The second one takes more bytes to represent but it&rsquo;s a simple recurring pattern, which makes it easy to write domain-specific compression for it<sup class="footnote-ref" id="fnref:macros"><a href="#fn:macros">1</a></sup>.</p>
 
 <h2 id="deeper-down-the-rabbit-hole">Deeper down the rabbit hole</h2>
 
 <p>It&rsquo;s not news to most programmers that really all of these constructs are redundant if WebAssembly had <code>goto</code>. If you had <code>goto</code> and some <code>goto_if</code> variant that conditionally jumped to a label you could implement all of these constructs. So why doesn&rsquo;t WebAssembly support <code>goto</code>?</p>
 
-<p>The classic argument against <code>goto</code> is that it leads to spaghetti code. No-one&rsquo;s writing raw WebAssembly though (or rather, most people aren&rsquo;t writing raw WebAssembly), so what&rsquo;s the problem? Well, WebAssembly does have some constraints, specifically it must produce code that is valid. WebAssembly is a stack machine, and you can&rsquo;t jump to just any label since that label might point to code that pops too many values off the stack, or pops the wrong types off the stack, or pushes too many values onto the stack. Essentially raw <code>goto</code>s allow you to do all kinds of evil stuff. What you really want is a list of <code>block</code>s like WebAssembly has now, each taking some number of arguments and returning some number of values onto the stack, and that you can call like function. Now you can have arbitrary flow between these blocks, like a typed version of <code>goto</code>.</p>
+<p>The classic argument against <code>goto</code> is that it leads to spaghetti code. WebAssembly isn&rsquo;t designed as a front-end language for general programming though, so what&rsquo;s the problem? Well, WebAssembly does have some constraints, specifically it must produce code that is valid. WebAssembly is a stack machine, and you can&rsquo;t jump to just any label since that label might point to code that pops too many values off the stack, or pops the wrong types off the stack, or pushes too many values onto the stack<sup class="footnote-ref" id="fnref:java"><a href="#fn:java">2</a></sup>. Essentially raw <code>goto</code>s allow you to do all kinds of evil stuff. What you really want is a list of <code>block</code>s like WebAssembly has now, each taking some number of arguments and returning some number of values onto the stack, and that you can call like function. Now you can have arbitrary flow between these blocks, like a typed version of <code>goto</code>.</p>
 
 <p>Now I&rsquo;m not some visionary genius and I didn&rsquo;t come up with this idea, nor was I the first to apply this to WebAssembly. The concept has been implemented in compilers for a very long time, where it is known as a [control flow graph][<a href="https://en.wikipedia.org/wiki/Control_flow_graph">https://en.wikipedia.org/wiki/Control_flow_graph</a>] or CFG. A CFG is usually combined with a code representation in SSA form, and if you&rsquo;ve read my previous article you probably know where this is going by now but let&rsquo;s work through it together anyway. As for implementing it in WebAssembly, I was introduced to this as it applies to WebAssembly by the author of the <a href="https://github.com/WebAssembly/funclets/blob/master/proposals/funclets/Overview.md">WebAssembly Funclets proposal</a>, which implements this basic idea.</p>
 
@@ -142,8 +142,10 @@ Also, this series is going to come off as if I dislike WebAssembly. I love WebAs
 <hr />
 
 <ol>
-<li id="fn:macros">The simplest compression method would be to implement macros - in the header you define a macro that takes some arguments and produces one or more instructions. Probably you&rsquo;d want to restrict it to only generate balanced block start and end tags but that wouldn&rsquo;t be necessary for correct behaviour.
+<li id="fn:macros">The simplest compression method would be to implement macros - in the header you define a macro that takes some arguments and produces one or more instructions. I&rsquo;m not certain if there&rsquo;s an implementation of this that would provide better results than simply using a general-purpose compression algorithm, however.
  <a class="footnote-return" href="#fnref:macros"><sup>[return]</sup></a></li>
+<li id="fn:java">The JVM is a stack machine that uses <code>goto</code> with untyped blocks for control flow, but to maintain safety it must disable the JIT entirely when hitting code that can&rsquo;t be converted into control flow that resembles the restricted control flow of current WebAssembly. Instead, it falls back to an interpreter for the bytecode. Unlike the JVM, however, we have the option of building typed blocks into our format from the start.
+ <a class="footnote-return" href="#fnref:java"><sup>[return]</sup></a></li>
 </ol>
 </div>
 
