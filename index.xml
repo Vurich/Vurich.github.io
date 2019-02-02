@@ -214,7 +214,7 @@ Also, this series is going to come off as if I dislike WebAssembly. I love WebAs
 
 &lt;p&gt;There is one thing that may have been a major factor to the decision not to adopt arbitrary CFGs for WebAssembly control flow. I believe that V8 is an exception to most compilers in that it doesn&amp;rsquo;t represent code as a CFG at all - it maintains roughly JS-compatible control flow all the way from front-end to codegen. In order to support this V8 would have to be converted to use CFGs, they&amp;rsquo;d have to implement something like Relooper internally, or they&amp;rsquo;d have to write a new WebAssembly runtime from scratch. Google was and is a major roadblock to getting this implemented as they have multiple people on the committee in charge of WebAssembly who have veto power.&lt;/p&gt;
 
-&lt;p&gt;Join us next time for a peek at the stack. I promise that this will be the last negative post.&lt;/p&gt;
+&lt;p&gt;Join us next time for a peek at the stack. I promise that this next one will be the last negative post.&lt;/p&gt;
 &lt;div class=&#34;footnotes&#34;&gt;
 
 &lt;hr /&gt;
