@@ -194,7 +194,7 @@ Also, this series is going to come off as if I dislike WebAssembly. I love WebAs
 <ol>
 <li id="fn:why-push-pop">The <code>push</code> and <code>pop</code> are to reserve space on the stack, it&rsquo;s better if you need to reserve &lt;8 bytes to use <code>push</code> and <code>pop</code> instead of doing arithmetic on the stack pointer yourself.
  <a class="footnote-return" href="#fnref:why-push-pop"><sup>[return]</sup></a></li>
-<li id="fn:hot-cold-globals">Why not simply have every function mark which globals are hot and which are cold? Well, we have code size constraints, and having to say this on every function will bloat the format. More bloat means more bytes have to be transferred over the wire, which is something that the WebAssembly format is explicitly designed to prevent. Maybe a future extension to the format could have globals either hot or cold <em>by default</em>, allowing functions to override that if they so wish.
+<li id="fn:hot-cold-globals">Why not simply have every function mark which globals are hot and which are cold? Well, we have code size constraints, and having to say this on every function will bloat the format. More bloat means more bytes have to be transferred over the wire, which is something that the WebAssembly format is explicitly designed to prevent. Maybe a future extension to the format could have globals either hot or cold <em>by default</em>, allowing functions or even blocks to override that if they so wish.
  <a class="footnote-return" href="#fnref:hot-cold-globals"><sup>[return]</sup></a></li>
 </ol>
 </div>
