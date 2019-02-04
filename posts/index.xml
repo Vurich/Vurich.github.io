@@ -157,7 +157,7 @@ Also, this series is going to come off as if I dislike WebAssembly. I love WebAs
 &lt;blockquote&gt;
 &lt;h3 id=&#34;preamble&#34;&gt;Preamble&lt;/h3&gt;
 
-&lt;p&gt;This is part 2 of a 4-part miniseries on issues with WebAssembly and proposals to fix them. &lt;a href=&#34;http://troubles.md/posts/wasm-is-not-a-stack-machine/&#34;&gt;Part 1 here&lt;/a&gt;.
+&lt;p&gt;This is part 2 of a 4-part miniseries on issues with WebAssembly and proposals to fix them. &lt;a href=&#34;http://troubles.md/posts/wasm-is-not-a-stack-machine/&#34;&gt;Part 1 here&lt;/a&gt;, [part 3 here][part-3].
 &lt;br/&gt;&lt;br/&gt;
 This article assumes some familiarity with virtual machines, compilers and WebAssembly, but I&amp;rsquo;ll try to link to relevant information where necessary so even if you&amp;rsquo;re not you can follow along.
 &lt;br/&gt;&lt;br/&gt;
@@ -242,7 +242,7 @@ Also, this series is going to come off as if I dislike WebAssembly. I love WebAs
 &lt;blockquote&gt;
 &lt;h3 id=&#34;preamble&#34;&gt;Preamble&lt;/h3&gt;
 
-&lt;p&gt;This is part 1 of a 4-part miniseries on issues with WebAssembly and proposals to fix them. &lt;a href=&#34;http://troubles.md/posts/why-do-we-need-the-relooper-algorithm-again/&#34;&gt;Part 2 here&lt;/a&gt;.
+&lt;p&gt;This is part 1 of a 4-part miniseries on issues with WebAssembly and proposals to fix them. &lt;a href=&#34;http://troubles.md/posts/why-do-we-need-the-relooper-algorithm-again/&#34;&gt;Part 2 here&lt;/a&gt;, &lt;a href=&#34;http://troubles.md/posts/the-stack-is-not-the-stack/&#34;&gt;part 3 here&lt;/a&gt;.
 &lt;br/&gt;&lt;br/&gt;
 This article assumes some familiarity with virtual machines, compilers and WebAssembly, but I&amp;rsquo;ll try to link to relevant information where necessary so even if you&amp;rsquo;re not you can follow along.
 &lt;br/&gt;&lt;br/&gt;
