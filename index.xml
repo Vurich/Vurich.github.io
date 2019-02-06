@@ -129,7 +129,7 @@ Also, this series is going to come off as if I dislike WebAssembly. I love WebAs
 
 &lt;h2 id=&#34;why-isn-t-this-implemented-already&#34;&gt;Why isn&amp;rsquo;t this implemented already?&lt;/h2&gt;
 
-&lt;p&gt;Unlike the past two articles, this is pretty clearly not a fundamental design issue that should have be fixed for the MVP. This can easily be added in a backwards-compatible way - existing code can&amp;rsquo;t take advantage of this optimisation but any new code will be able to. Hopefully this article gave you some insight into why the stack isn&amp;rsquo;t quite as optimised as it should be in contemporary WebAssembly runtimes.&lt;/p&gt;
+&lt;p&gt;Unlike the past two articles, this is pretty clearly not a fundamental design issue that should have been fixed for the MVP. This can easily be added in a backwards-compatible way - existing code can&amp;rsquo;t take advantage of this optimisation but any new code will be able to. Hopefully this article gave you some insight into why the stack isn&amp;rsquo;t quite as optimised as it should be in contemporary WebAssembly runtimes.&lt;/p&gt;
 
 &lt;p&gt;Join me next time where I finally inject some positivity into this series, and propose a medium-term solution to these issues and more.&lt;/p&gt;
 &lt;div class=&#34;footnotes&#34;&gt;
