@@ -180,7 +180,7 @@
  <a class="footnote-return" href="#fnref:br-if"><sup>[return]</sup></a></li>
 <li id="fn:caller-optimisations">In a &ldquo;proper&rdquo; optimising compiler that doesn&rsquo;t need to support streaming compilation, you can do optimisations on blocks with more than one caller but a streaming compiler can only do these optimisations for blocks with precisely one caller. I won&rsquo;t go into precisely why this is now, I&rsquo;ll leave that as an exercise for the reader, but I might revisit it in a future article.
  <a class="footnote-return" href="#fnref:caller-optimisations"><sup>[return]</sup></a></li>
-<li id="fn:tee-local">Why they didn&rsquo;t have it return the <em>old</em> value of the local is beyond me, since that&rsquo;s a lot harder to emulate (requiring you to generate an extra local). The current behaviour is trivially emulateable. I presume it&rsquo;s related to Wasm&rsquo;s roots as a binary representation of asm.js and the fact that JavaScript allows <code>a = b = c = d</code>.
+<li id="fn:tee-local">Why they didn&rsquo;t have it return the <em>old</em> value of the local is beyond me, since that&rsquo;s a lot harder to emulate (requiring you to generate an extra local). The current behaviour is trivially emulateable. I presume it&rsquo;s related to Wasm&rsquo;s roots as a binary representation of asm.js and the fact that JavaScript allows <code>a = b = c = d</code>, but that&rsquo;s just speculation.
  <a class="footnote-return" href="#fnref:tee-local"><sup>[return]</sup></a></li>
 <li id="fn:lea">Technically <code>+</code> is a bad example since you can emulate 3-argument <code>add</code> with <code>lea</code> but bear with me here.
  <a class="footnote-return" href="#fnref:lea"><sup>[return]</sup></a></li>
