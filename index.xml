@@ -58,7 +58,7 @@
 &lt;li&gt;Distribute bytecode and use streaming compilation
 
 &lt;ul&gt;
-&lt;li&gt;Pros: Can be much simpler than a &amp;ldquo;traditional&amp;rdquo; compiler, can give very good performance with good bytecode design, relatively easy to ensure worst-case startup time is low, can take advantage of host microarchitecture&lt;/li&gt;
+&lt;li&gt;Pros: Can give very good performance with good bytecode design, relatively easy to ensure worst-case startup time is low, can take advantage of host microarchitecture&lt;/li&gt;
 &lt;li&gt;Cons: Must implement a different backend for each target architecture, no thread- or memory-safety by default, need to design bytecode around constraints of streaming compilation&lt;/li&gt;
 &lt;/ul&gt;&lt;/li&gt;
 &lt;/ul&gt;
