@@ -3,6 +3,23 @@
   xmlns:xhtml="http://www.w3.org/1999/xhtml">
   
   <url>
+    <loc>http://troubles.md/posts/lightbeam/</loc>
+    <lastmod>2019-05-04T10:10:34+01:00</lastmod>
+  </url>
+  
+  <url>
+    <loc>http://troubles.md/posts/</loc>
+    <lastmod>2019-05-04T10:10:34+01:00</lastmod>
+    <priority>0</priority>
+  </url>
+  
+  <url>
+    <loc>http://troubles.md/</loc>
+    <lastmod>2019-05-04T10:10:34+01:00</lastmod>
+    <priority>0</priority>
+  </url>
+  
+  <url>
     <loc>http://troubles.md/posts/microwasm/</loc>
     <lastmod>2019-01-31T16:40:16+01:00</lastmod>
   </url>
@@ -88,19 +105,7 @@
   </url>
   
   <url>
-    <loc>http://troubles.md/posts/</loc>
-    <lastmod>2019-01-31T16:40:16+01:00</lastmod>
-    <priority>0</priority>
-  </url>
-  
-  <url>
     <loc>http://troubles.md/tags/</loc>
-    <priority>0</priority>
-  </url>
-  
-  <url>
-    <loc>http://troubles.md/</loc>
-    <lastmod>2019-01-31T16:40:16+01:00</lastmod>
     <priority>0</priority>
   </url>
   

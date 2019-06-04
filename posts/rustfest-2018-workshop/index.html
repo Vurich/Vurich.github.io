@@ -206,7 +206,7 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 9 measured; 0 filtered out</code
 </span><span class="w">        </span><span class="c1">// ..snip..
 </span><span class="c1"></span><span class="w">    </span><span class="p">}</span><span class="w">
 </span><span class="w"></span><span class="p">}</span><span class="w">
-</span><span class="w"></span></code></pre></div>
+</span></code></pre></div>
 <p>If we look at the callees for <code>clone</code> and <code>drop</code> by double-clicking on them we can see that the <code>HashMap</code> is spending a lot of time recursively cloning and dropping its elements. This is because not only is the <code>HashMap</code> heap-allocated, but so are its elements. <code>String</code> is a heap-allocated string that must be allocated, cloned and deallocated, and <code>Value</code> contains <code>Vec</code>s and <code>String</code>s - both heap-allocated.</p>
 
 <p>Cloning <code>String</code>s is mostly a problem because <code>String</code>s own their data. This means you can mutate the data, which then means that you can&rsquo;t share them - otherwise a <code>String</code> might magically change its data while you&rsquo;re using it! Our use of <code>String</code> is immutable, though, and so we don&rsquo;t actually need owned <code>String</code>s. We can use shared, immutable <code>String</code>s instead. There are a couple of ways that you can acheive this, and I&rsquo;ve seperated them into beginner, intermediate and advanced.</p>
@@ -276,7 +276,7 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 9 measured; 0 filtered out</code
 <div class="highlight"><pre class="chroma"><code class="language-rust" data-lang="rust"><span class="k">struct</span> <span class="nc">ServerState</span><span class="w"> </span><span class="p">{</span><span class="w">
 </span><span class="w">    </span><span class="n">customers</span>: <span class="nc">HashMap</span><span class="o">&lt;</span><span class="nb">String</span><span class="p">,</span><span class="w"> </span><span class="nb">String</span><span class="o">&gt;</span><span class="p">,</span><span class="w">
 </span><span class="w"></span><span class="p">}</span><span class="w">
-</span><span class="w"></span></code></pre></div>
+</span></code></pre></div>
 <p>Except that the way that <code>HashMap</code> is implemented is to seperate the storage into some number of &ldquo;buckets&rdquo;, and so when you insert or retrieve from the <code>HashMap</code> you first find the bucket that it&rsquo;s in and then iterate over that bucket until you find the entry with the right key<sup class="footnote-ref" id="fnref:hashmap"><a href="#fn:hashmap">4</a></sup>. It looks something like this:</p>
 <div class="highlight"><pre class="chroma"><code class="language-rust" data-lang="rust"><span class="k">struct</span> <span class="nc">HashMap</span><span class="o">&lt;</span><span class="n">K</span><span class="p">,</span><span class="w"> </span><span class="n">V</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span><span class="w">
 </span><span class="w">    </span><span class="n">buckets</span>: <span class="nb">Vec</span><span class="o">&lt;</span><span class="nb">Vec</span><span class="o">&lt;</span><span class="p">(</span><span class="n">K</span><span class="p">,</span><span class="w"> </span><span class="n">V</span><span class="p">)</span><span class="o">&gt;&gt;</span><span class="p">,</span><span class="w">
@@ -297,7 +297,7 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 9 measured; 0 filtered out</code
 </span><span class="w">        </span><span class="nb">None</span><span class="w">
 </span><span class="w">    </span><span class="p">}</span><span class="w">
 </span><span class="w"></span><span class="p">}</span><span class="w">
-</span><span class="w"></span></code></pre></div>
+</span></code></pre></div>
 <p>If you&rsquo;re an attacker trying to take down this innocent flapjack website and you can work out a way to generate a customer name that will go into a specific bucket, you can simply generate entries that all go into the <em>same</em> bucket. This means that every new insertion or retreival to that one bucket is extremely slow, because it has to do many more comparisons than you normally would have to. What we want is for the entries to be approximately evenly-distributed across all the buckets. The default <code>HashMap</code> used in Rust has two defences against this. Firstly, it initialises the hashing algorithm with a random seed, which means that because you don&rsquo;t know the initial hasher state you can&rsquo;t run the hashing algorithm many times on your own computer, find some customer names that would go into the same bucket, and then send those to the server. Second, the hashing algorithm is cryptographically secure. This means that there is no way to guess the initial state by just running the hasher many times, measuring how the output changes, and then using some smart maths to derive the original state. The default hashing algorithm is actually pretty fast, but is bad on small keys (like the short variable names in our programs). To improve performance we can use <code>FnvHash</code> from the <a href="https://crates.io/crates/fnv"><code>fnv</code></a> crate.</p>
 
 <blockquote>
@@ -312,7 +312,7 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 9 measured; 0 filtered out</code
 <div class="highlight"><pre class="chroma"><code class="language-rust" data-lang="rust"><span class="k">extern</span><span class="w"> </span><span class="k">crate</span><span class="w"> </span><span class="n">fnv</span><span class="p">;</span><span class="w">
 </span><span class="w">
 </span><span class="w"></span><span class="k">use</span><span class="w"> </span><span class="n">fnv</span>::<span class="n">FnvHashMap</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">HashMap</span><span class="p">;</span><span class="w">
-</span><span class="w"></span></code></pre></div>
+</span></code></pre></div>
 <h2 id="intermediate-2">Intermediate</h2>
 
 <p>There are other &ldquo;fast hashmaps&rdquo; for Rust, like <a href="https://crates.io/crates/fxhash"><code>fxhash</code></a>. Which one is faster for these inputs?</p>
@@ -371,7 +371,7 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 9 measured; 0 filtered out</code
 </span><span class="w">
 </span><span class="w">    </span><span class="c1">// ..snip..
 </span><span class="c1"></span><span class="p">}</span><span class="w">
-</span><span class="w"></span></code></pre></div>
+</span></code></pre></div>
 <p>At compile-time you can check if a variable of the given name has been defined in the current scope and use stack slots if so, otherwise using named variables. Then you can convert function calls to jumps (first-class functions would get converted to passing function pointers) and the entire <code>eval</code> function becomes one loop. Much faster than recursive calls. Probably you won&rsquo;t finish this task by the end of the session but hey, writing compilers is fun.</p>
 <div class="footnotes">
 

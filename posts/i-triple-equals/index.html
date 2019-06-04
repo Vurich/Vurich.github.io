@@ -130,14 +130,14 @@ Got:      0b11111111110000000000000000000000000
 </span><span class="w">
 </span><span class="w">  </span><span class="nb">Ok</span><span class="p">(</span><span class="n">InstructionOutcome</span>::<span class="n">RunNextInstruction</span><span class="p">)</span><span class="w">
 </span><span class="w"></span><span class="p">}</span><span class="w">
-</span><span class="w"></span></code></pre></div>
+</span></code></pre></div>
 <p>That <code>v.transmute_into()</code> call was returning <code>0x7fe00000</code> instead of <code>0x7fa00000</code>! Hang on, like the name implies, <code>v.transmute_into()</code> should just be a transmute, it should just reinterpret the bits. I looked at the source code, and sure enough:</p>
 <div class="highlight"><pre class="chroma"><code class="language-rust" data-lang="rust"><span class="k">impl</span><span class="w"> </span><span class="n">TransmuteInto</span><span class="o">&lt;</span><span class="kt">f32</span><span class="o">&gt;</span><span class="w"> </span><span class="k">for</span><span class="w"> </span><span class="kt">i32</span><span class="w"> </span><span class="p">{</span><span class="w">
 </span><span class="w">  </span><span class="k">fn</span> <span class="nf">transmute_into</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="w"> </span>-&gt; <span class="kt">f32</span> <span class="p">{</span><span class="w">
 </span><span class="w">    </span><span class="kt">f32</span>::<span class="n">from_bits</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span><span class="w">
 </span><span class="w">  </span><span class="p">}</span><span class="w">
 </span><span class="w"></span><span class="p">}</span><span class="w">
-</span><span class="w"></span></code></pre></div>
+</span></code></pre></div>
 <p>We&rsquo;re back where we started. As we saw before, <code>f32::from_bits</code> is just a transmute. Originally I thought it was an old version of the standard library, so I wrote a quick test:</p>
 <div class="highlight"><pre class="chroma"><code class="language-rust" data-lang="rust"><span class="k">use</span><span class="w"> </span><span class="n">test</span>::<span class="n">black_box</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="n">bb</span><span class="p">;</span><span class="w">
 </span><span class="w">
@@ -151,7 +151,7 @@ Got:      0b11111111110000000000000000000000000
 </span><span class="w">    </span><span class="p">)</span><span class="w">
 </span><span class="w">  </span><span class="p">);</span><span class="w">
 </span><span class="w"></span><span class="p">}</span><span class="w">
-</span><span class="w"></span></code></pre></div>
+</span></code></pre></div>
 <p>The <code>black_box</code>/<code>bb</code> function just ensures that the compiler doesn&rsquo;t optimise anything out. This particular test succeeds, though, even on x86 (i.e. 32-bit, the same architecture where our <code>wasmi</code> test suite fails). So I went back to <code>f32::from_bits</code> in the compiled output for <code>wasmi</code> and disassembled it with LLDB.</p>
 <div class="highlight"><pre class="chroma"><code class="language-gas" data-lang="gas"><span class="nl">core:</span><span class="err">:</span><span class="nl">f32:</span><span class="err">:&lt;</span><span class="nf">impl</span> <span class="no">core</span><span class="p">::</span><span class="no">num</span><span class="p">::</span><span class="no">Float</span> <span class="no">for</span> <span class="no">f32</span><span class="err">&gt;</span><span class="p">::</span><span class="no">from_bits</span><span class="p">:</span>
   <span class="nf">pushl</span>  <span class="nv">%ebp</span>

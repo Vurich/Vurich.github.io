@@ -85,7 +85,7 @@
 </span><span class="w">  
 </span><span class="w">  </span><span class="n">println</span><span class="o">!</span><span class="p">(</span><span class="s">&#34;{:?}&#34;</span><span class="p">,</span><span class="w"> </span><span class="n">vec</span><span class="p">);</span><span class="w">
 </span><span class="w"></span><span class="p">}</span><span class="w">
-</span><span class="w"></span></code></pre></div>
+</span></code></pre></div>
 <p>The implementation is conceptually very simple, essentially looking like the following:</p>
 <div class="highlight"><pre class="chroma"><code class="language-rust" data-lang="rust"><span class="c1">// Implemented for `[T; 1]`, `[T; 2]`, etc.
 </span><span class="c1"></span><span class="k">trait</span><span class="w"> </span><span class="n">Array</span><span class="w"> </span><span class="p">{</span><span class="w">
@@ -103,7 +103,7 @@
 </span><span class="w">    </span><span class="p">},</span><span class="w">
 </span><span class="w">    </span><span class="n">Heap</span><span class="p">(</span><span class="nb">Vec</span><span class="o">&lt;</span><span class="n">T</span>::<span class="n">Item</span><span class="o">&gt;</span><span class="p">),</span><span class="w">
 </span><span class="w"></span><span class="p">}</span><span class="w">
-</span><span class="w"></span></code></pre></div>
+</span></code></pre></div>
 <p>The real implementation is more complex for optimisation purposes, but it&rsquo;s essentially what you see above. If the length is less than <code>T::size()</code> it will store the elements inline (on the stack), if it becomes larger than that then it will copy the elements onto the heap - incurring a cost to allocate and to copy the existing elements. The main benefits to this are <em>not</em> from avoiding allocation, but from better cache efficiency when you store <code>SmallVec</code> values in an array.</p>
 
 <p>Because <a href="http://voices.canonical.com/jussi.pakkanen/2011/09/27/is-malloc-slow/"><code>malloc</code> is fast</a>, for many cases it&rsquo;s actually slower to use <code>SmallVec</code> than just using <code>Vec</code> because the one-time cost of the initial allocation is dwarfed by the lifetime cost of <code>SmallVec</code>&rsquo;s increased complexity. You can see that switching to <code>Vec</code> actually improves speed on many of <code>SmallVec</code>&rsquo;s own benchmarks<sup class="footnote-ref" id="fnref:smallvec-benches"><a href="#fn:smallvec-benches">1</a></sup>:</p>
@@ -159,7 +159,7 @@
 </span><span class="w">    </span><span class="p">}</span><span class="w">
 </span><span class="w">  </span><span class="p">}</span><span class="w">
 </span><span class="w"></span><span class="p">}</span><span class="w">
-</span><span class="w"></span></code></pre></div>
+</span></code></pre></div>
 <p>Both seem pretty clear, for <code>extend</code> you reserve the expected number of elements and then do a <code>for</code> loop over the iterator, pushing each element to the new <code>SmallVec</code>. For <code>from_elem</code> you create a <code>SmallVec</code> preallocated with the number of elements you need and then insert <code>n</code> clones of <code>elem</code>. Hang on, though, what does the source code of <code>insert_many</code> look like?</p>
 <div class="highlight"><pre class="chroma"><code class="language-rust" data-lang="rust"><span class="k">impl</span><span class="o">&lt;</span><span class="n">A</span>: <span class="nc">Array</span><span class="o">&gt;</span><span class="w"> </span><span class="n">SmallVec</span><span class="o">&lt;</span><span class="n">A</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span><span class="w">
 </span><span class="w">  </span><span class="c1">// ...
@@ -196,19 +196,19 @@
 </span><span class="w">    </span><span class="p">}</span><span class="w">
 </span><span class="w">  </span><span class="p">}</span><span class="w">
 </span><span class="w"></span><span class="p">}</span><span class="w">
-</span><span class="w"></span></code></pre></div>
+</span></code></pre></div>
 <p>Gah! That&rsquo;s a <em>lot</em> of code. Let&rsquo;s go through this bit-by-bit (I&rsquo;ve removed assertions to make the logic clearer):</p>
 <div class="highlight"><pre class="chroma"><code class="language-rust" data-lang="rust"><span class="kd">let</span><span class="w"> </span><span class="p">(</span><span class="n">lower_size_bound</span><span class="p">,</span><span class="w"> </span><span class="n">_</span><span class="p">)</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">iter</span><span class="p">.</span><span class="n">size_hint</span><span class="p">();</span><span class="w">
 </span><span class="w">
 </span><span class="w"></span><span class="bp">self</span><span class="p">.</span><span class="n">reserve</span><span class="p">(</span><span class="n">lower_size_bound</span><span class="p">);</span><span class="w">
-</span><span class="w"></span></code></pre></div>
+</span></code></pre></div>
 <p>This reserves enough space for the iterator&rsquo;s self-reported lower bound on its number of produced elements. Well hang on, we already know that we have enough space since we just created it with <code>with_capacity</code> and then used an iterator with a fixed size. So this is useless. We don&rsquo;t need to reserve any more space.</p>
 <div class="highlight"><pre class="chroma"><code class="language-rust" data-lang="rust"><span class="kd">let</span><span class="w"> </span><span class="n">old_len</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="bp">self</span><span class="p">.</span><span class="n">len</span><span class="p">;</span><span class="w">
 </span><span class="w">
 </span><span class="w"></span><span class="kd">let</span><span class="w"> </span><span class="n">ptr</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="bp">self</span><span class="p">.</span><span class="n">as_mut_ptr</span><span class="p">().</span><span class="n">offset</span><span class="p">(</span><span class="n">index</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="kt">isize</span><span class="p">);</span><span class="w">
 </span><span class="w">
 </span><span class="w"></span><span class="n">ptr</span>::<span class="n">copy</span><span class="p">(</span><span class="n">ptr</span><span class="p">,</span><span class="w"> </span><span class="n">ptr</span><span class="p">.</span><span class="n">offset</span><span class="p">(</span><span class="n">lower_size_bound</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="kt">isize</span><span class="p">),</span><span class="w"> </span><span class="n">old_len</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">index</span><span class="p">);</span><span class="w">
-</span><span class="w"></span></code></pre></div>
+</span></code></pre></div>
 <p>This optimistically copies any existing elements to the end of the array. This is because this function allows you to insert the new elements at any point - not just at the end - and so if there are existing elements it needs to move them first<sup class="footnote-ref" id="fnref:insert-is-unsound"><a href="#fn:insert-is-unsound">2</a></sup>. Again, these lines are useless. If we&rsquo;re calling this from <code>from_elem</code>, we <em>know</em> that both <code>self.len</code> and <code>index</code> are both 0, so this will always copy 0 bytes (a no-op). We still waste cycles figuring this out, though.</p>
 <div class="highlight"><pre class="chroma"><code class="language-rust" data-lang="rust"><span class="k">for</span><span class="w"> </span><span class="p">(</span><span class="n">off</span><span class="p">,</span><span class="w"> </span><span class="n">element</span><span class="p">)</span><span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="n">iter</span><span class="p">.</span><span class="n">enumerate</span><span class="p">()</span><span class="w"> </span><span class="p">{</span><span class="w">
 </span><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="n">off</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">lower_size_bound</span><span class="w"> </span><span class="p">{</span><span class="w">
@@ -218,7 +218,7 @@
 </span><span class="w">    </span><span class="bp">self</span><span class="p">.</span><span class="n">insert</span><span class="p">(</span><span class="n">index</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="n">off</span><span class="p">,</span><span class="w"> </span><span class="n">element</span><span class="p">);</span><span class="w">
 </span><span class="w">  </span><span class="p">}</span><span class="w">
 </span><span class="w"></span><span class="p">}</span><span class="w">
-</span><span class="w"></span></code></pre></div>
+</span></code></pre></div>
 <p>For every element we do a branch. This means that the compiler can&rsquo;t optimise this into a <a href="http://man7.org/linux/man-pages/man3/memcpy.3.html"><code>memcpy</code></a> (the fastest possible method of copying the bytes) because for each element we need to check whether or not we&rsquo;ve reached the lower size bound. Technically the compiler <em>could</em> optimise this by turning it into two loops (known as <a href="https://en.wikipedia.org/wiki/Loop_fission_and_fusion">loop fission</a>) and then noticing that the first loop is equivalent to a <code>memcpy</code>, but relying on it to do so is inadvisable because it requires multiple optimisation passes to be applied in the correct order. Again, when we&rsquo;re calling this function from <code>from_elem</code> we know that this can only ever go through the first branch and never the second, so this prevents optimisations and wastes time checking <code>off &lt; lower_size_bound</code> for no benefit.</p>
 <div class="highlight"><pre class="chroma"><code class="language-rust" data-lang="rust"><span class="kd">let</span><span class="w"> </span><span class="n">num_added</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="bp">self</span><span class="p">.</span><span class="n">len</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">old_len</span><span class="p">;</span><span class="w">
 </span><span class="w"></span><span class="k">if</span><span class="w"> </span><span class="n">num_added</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">lower_size_bound</span><span class="w"> </span><span class="p">{</span><span class="w">
@@ -229,7 +229,7 @@
 </span><span class="w">    </span><span class="n">old_len</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="n">index</span><span class="w">
 </span><span class="w">  </span><span class="p">);</span><span class="w">
 </span><span class="w"></span><span class="p">}</span><span class="w">
-</span><span class="w"></span></code></pre></div>
+</span></code></pre></div>
 <p>This is another branch that&rsquo;s always skipped when we&rsquo;re doing <code>from_elem</code>, since we know that the iterator produces the right amount of elements every time. More wasted cycles.</p>
 
 <p>I&rsquo;m not going to go line-by-line into precisely how <code>Vec</code> does it, but you can check out the code <a href="https://github.com/rust-lang/rust/blob/9e3432447a9c6386443acdf731d488c159be3f66/src/liballoc/vec.rs#L1561-L1662">here</a>. The important thing is that for many types it&rsquo;s about as fast as is reasonably possible. A <em>lot</em> of work has been put into optimising this and it shows. There is even a special method that uses the operating system&rsquo;s ability to return zeroed memory &ldquo;magically&rdquo; if the element you pass to the function is equal to 0 (i.e. <code>Vec</code> requests a pointer to zeroed memory and the OS returns a pointer to memory that it knows <em>should</em> be zeroed, but doesn&rsquo;t actually zero it until you try to access it). It only increases the vector&rsquo;s length once, after all elements have been added. This is much better than our method of increasing the vector&rsquo;s length by 1 each iteration of the loop because you only have to do one addition. The bigger the <code>Vec</code>, the bigger difference this will make. The biggest benefit is that it uses specialisation to use <code>memcpy</code> for any element that implements <code>Copy</code>. This means that when possible it will copy using SIMD.</p>
@@ -254,7 +254,7 @@
 </span><span class="w">    </span><span class="p">}</span><span class="w">
 </span><span class="w">  </span><span class="p">}</span><span class="w">
 </span><span class="w"></span><span class="p">}</span><span class="w">
-</span><span class="w"></span></code></pre></div>
+</span></code></pre></div>
 <p>We don&rsquo;t need to use the OS&rsquo;s magical ability to conjure up zeroed memory when we&rsquo;re building things on the stack since that works at the granularity of a page - 4kb by default on Linux - and if you&rsquo;re creating an array that large then the cost of allocation is absolutely dwarfed by the cost of initialisation. LLVM can <a href="https://github.com/llvm-mirror/llvm/blob/master/lib/Transforms/Scalar/LoopIdiomRecognize.cpp">trivially optimise</a> the <code>for</code> loop into a <code>memcpy</code> and even a <code>memset</code> when <code>A::Item = u8</code> (the comment at the header of the file lists this optimisation as a <code>TODO</code> but if you look at the code you can see that it&rsquo;s already been implemented). We get all the benefits of <code>Vec</code>&rsquo;s complex implementation with the only cost being a <code>n &gt; A::size()</code> check, which is especially cheap because <code>A::size()</code> is a constant. You can see the generated assembly <a href="https://gist.github.com/Vurich/2d180d83821fc4f129b176a9a0f1dc63">here</a>, I haven&rsquo;t commented it because of the sheer amount of code that was generated before, but just the difference in the amount of code should make it clear that this method is significantly more efficient.</p>
 
 <p>After this, we see a huge improvement:</p>
@@ -285,7 +285,7 @@
 </span><span class="w">    </span><span class="p">}</span><span class="w">
 </span><span class="w">  </span><span class="p">}</span><span class="w">
 </span><span class="w"></span><span class="p">}</span><span class="w">
-</span><span class="w"></span></code></pre></div>
+</span></code></pre></div>
 <p>So what&rsquo;s wrong with this? Well, let&rsquo;s take a look at the source of <code>push</code>:</p>
 <div class="highlight"><pre class="chroma"><code class="language-rust" data-lang="rust"><span class="k">pub</span><span class="w"> </span><span class="k">fn</span> <span class="nf">push</span><span class="p">(</span><span class="o">&amp;</span><span class="k">mut</span><span class="w"> </span><span class="bp">self</span><span class="p">,</span><span class="w"> </span><span class="n">value</span>: <span class="nc">A</span>::<span class="n">Item</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w">
 </span><span class="w">  </span><span class="kd">let</span><span class="w"> </span><span class="n">cap</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="bp">self</span><span class="p">.</span><span class="n">capacity</span><span class="p">();</span><span class="w">
@@ -303,7 +303,7 @@
 </span><span class="w">    </span><span class="bp">self</span><span class="p">.</span><span class="n">set_len</span><span class="p">(</span><span class="n">len</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="w">
 </span><span class="w">  </span><span class="p">}</span><span class="w">
 </span><span class="w"></span><span class="p">}</span><span class="w">
-</span><span class="w"></span></code></pre></div>
+</span></code></pre></div>
 <p>It&rsquo;s the same problem again - we know that we don&rsquo;t need to grow for the first <code>lower_size_bound</code> iterations (because we already preallocated that many elements) but we do anyway. Plus we&rsquo;re making LLVM&rsquo;s job hard - it <em>could</em> figure out that because we set <code>self.capacity</code> and then check it against <code>self.len</code> in each iteration of the loop then it can split the loop in two and omit the check for the first <code>self.capacity - self.len</code> iterations, and then from <em>that</em> figure out that the writes can be vectorised, but it&rsquo;s again relying on a specific set of optimisations in a specific order. Also, we store to <code>self.len</code> every iteration of the loop and although LLVM could load <code>self.len</code> to a register, increment it there, and then store it again, that is not a simple enough optimisation for us to expect it to be reliably performed. Besides, that optimisation cannot be performed for an iterator that may panic, since in that case we need to ensure that <code>self.len</code> is correct after each iteration of the loop. This is because other code could observe it after the panic (even without <code>catch_panic</code>, code in implementations of <code>Drop::drop</code> could observe it). We can do this optimisation ourself and make the code easier to understand by LLVM:</p>
 <div class="highlight"><pre class="chroma"><code class="language-rust" data-lang="rust"><span class="k">fn</span> <span class="nf">extend</span><span class="o">&lt;</span><span class="n">I</span><span class="o">&gt;</span><span class="p">(</span><span class="o">&amp;</span><span class="k">mut</span><span class="w"> </span><span class="bp">self</span><span class="p">,</span><span class="w"> </span><span class="n">iterable</span>: <span class="nc">I</span><span class="p">)</span><span class="w">
 </span><span class="w"></span><span class="k">where</span><span class="w">
@@ -341,7 +341,7 @@
 </span><span class="w">    </span><span class="bp">self</span><span class="p">.</span><span class="n">push</span><span class="p">(</span><span class="n">elem</span><span class="p">);</span><span class="w">
 </span><span class="w">  </span><span class="p">}</span><span class="w">
 </span><span class="w"></span><span class="p">}</span><span class="w">
-</span><span class="w"></span></code></pre></div>
+</span></code></pre></div>
 <p>You see that in the fast path (the path where <code>iter.size_hint()</code> tells the truth) we just continuously <code>ptr::write</code>. We branch in the loop, but for most iterators the branch could either easily be removed by the compiler after monomorphisation  - for example, for slices, vectors and wrappers around either of those that preserve <code>size_hint</code>. For those where it isn&rsquo;t, the <code>else</code> branch is taken at most once per run of the loop. This makes it extremely predictable even for CPUs with only basic branch predictors. We then do a &ldquo;real&rdquo; store to the <code>len</code> field only once, and <code>count</code> can easily be put into a register. This optimisation isn&rsquo;t defeated by an iterator that may panic, either. Since we only store to memory after the loop, if it panics during the loop then the calling code will just see the value of <code>self.len</code> from before we entered the loop. We can do this transformation because we know that leaking data when panicking is fine, but LLVM cannot because it would change the meaning of the program<sup class="footnote-ref" id="fnref:set-len-on-drop"><a href="#fn:set-len-on-drop">3</a></sup>.</p>
 
 <p>We can see that the difference after this optimisation is large:</p>
