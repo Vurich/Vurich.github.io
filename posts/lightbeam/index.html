@@ -175,7 +175,7 @@
     <span class="p">(</span><span class="nv">set_local</span> <span class="nv">$output</span>
       <span class="p">(</span><span class="nv">i32.mul</span> <span class="p">(</span><span class="nv">get_local</span> <span class="nv">$output</span><span class="p">)</span>
                <span class="p">(</span><span class="nv">get_local</span> <span class="nv">$counter</span><span class="p">)))</span>
-    <span class="p">(</span><span class="nv">br_if</span> <span class="p">(</span><span class="nv">i32.neq</span> <span class="p">(</span><span class="nv">get_local</span> <span class="nv">$counter</span><span class="p">)</span> <span class="p">(</span><span class="nv">i32.const</span> <span class="mi">0</span><span class="p">)))</span>
+    <span class="p">(</span><span class="nv">br_if</span> <span class="mi">0</span> <span class="p">(</span><span class="nv">i32.ne</span> <span class="p">(</span><span class="nv">get_local</span> <span class="nv">$counter</span><span class="p">)</span> <span class="p">(</span><span class="nv">i32.const</span> <span class="mi">0</span><span class="p">)))</span>
   <span class="p">)</span>
   <span class="p">(</span><span class="nv">return</span> <span class="p">(</span><span class="nv">get_local</span> <span class="nv">$output</span><span class="p">))</span>
 <span class="p">)</span></code></pre></div>
