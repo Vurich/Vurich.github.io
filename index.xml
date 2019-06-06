@@ -26,7 +26,7 @@
 
 &lt;h2 id=&#34;lightbeam&#34;&gt;Lightbeam&lt;/h2&gt;
 
-&lt;p&gt;Lightbeam is intended for use as the first-pass compiler in &lt;a href=&#34;https://github.com/CraneStation/lightbeam&#34;&gt;Wasmtime&lt;/a&gt; and as the main compilation engine for &lt;a href=&#34;https://github.com/paritytech/substrate&#34;&gt;Substrate&lt;/a&gt;&amp;rsquo;s smart contract subsystem.&lt;/p&gt;
+&lt;p&gt;Lightbeam is intended for use as the initial compiler in &lt;a href=&#34;https://github.com/CraneStation/lightbeam&#34;&gt;Wasmtime&lt;/a&gt; and as the main compilation engine for &lt;a href=&#34;https://github.com/paritytech/substrate&#34;&gt;Substrate&lt;/a&gt;&amp;rsquo;s smart contract subsystem.&lt;/p&gt;
 
 &lt;p&gt;In relation to the latter, you might have some questions: Why do we need a compiler for our smart contracts? What even are smart contracts? We really want to put a compiler in a blockchain client? For answers to these questions and more you can check out &lt;a href=&#34;http://troubles.md/posts/why-wasm/&#34;&gt;my article about WebAssembly on the blockchain&lt;/a&gt;, but it&amp;rsquo;s not particularly important for the purposes of this article.&lt;/p&gt;
 
