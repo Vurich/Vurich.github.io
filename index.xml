@@ -34,7 +34,7 @@
 
 &lt;h2 id=&#34;streaming-compilation&#34;&gt;Streaming compilation&lt;/h2&gt;
 
-&lt;p&gt;So I&amp;rsquo;m not going to go too deep into this since Lin Clark has already covered this much more thoroughly than I can, but here&amp;rsquo;s the pitch. If you want to have fast startup times for a program, you have a few options, each with their own pros and cons:&lt;/p&gt;
+&lt;p&gt;So I&amp;rsquo;m not going to go too deep into this since Lin Clark has &lt;a href=&#34;https://hacks.mozilla.org/2018/01/making-webassembly-even-faster-firefoxs-new-streaming-and-tiering-compiler/&#34;&gt;already covered this much more thoroughly&lt;/a&gt; than I can, but here&amp;rsquo;s the pitch. If you want to have fast startup times for a program, you have a few options, each with their own pros and cons:&lt;/p&gt;
 
 &lt;ul&gt;
 &lt;li&gt;Distribute the program as machine code
