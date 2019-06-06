@@ -100,6 +100,11 @@
   </url>
   
   <url>
+    <loc>http://troubles.md/posts/off-topic/</loc>
+    <priority>0</priority>
+  </url>
+  
+  <url>
     <loc>http://troubles.md/categories/</loc>
     <priority>0</priority>
   </url>
