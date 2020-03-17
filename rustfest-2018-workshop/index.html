@@ -15,7 +15,7 @@
     
         <meta name="image" content="http://troubles.md/floppies.png">
         <meta name="og:image" content="http://troubles.md/floppies.png">
-       <meta name="og:url" content="http://troubles.md/posts/rustfest-2018-workshop/">
+       <meta name="og:url" content="http://troubles.md/rustfest-2018-workshop/">
     <meta name="og:site_name" content="Fastware Workshop">
     <meta name="og:type" content="article">
     
@@ -86,7 +86,7 @@
 <li>To generate performance traces you&rsquo;ll need <a href="http://valgrind.org/">Valgrind</a>, this requires macOS or Linux. If you&rsquo;re on Windows then you can use my Valgrind traces, see below.</li>
 <li>To view the results you can use <a href="https://kcachegrind.github.io/html/Home.html">KCachegrind</a>. On macOS you can use the Qt version, called &ldquo;QCachegrind&rdquo;. The app is the same, it&rsquo;ll just look slightly different.</li>
 </ul>
-<p>You&rsquo;ll probably have seen <code>perf</code>+<code>flamegraph</code> recommended before by <a href="http://troubles.md/posts/rust-optimization/">certain very smart and handsome fellows</a> but I&rsquo;ve actually had more luck with callgrind (included in Valgrind). You can try to use <code>perf</code> but although it can give very good outputs for some programs it&rsquo;s quite inconsistent. Also, using callgrind means you can use KCachegrind, which is the best thing since sliced bread. In the linked article I said that Valgrind was scary, but that was one of my patented Uninformed Opinions™. It&rsquo;s actually very intuitive and, honestly, easier to use than the &ldquo;simple&rdquo; solution of using <code>perf</code>. I&rsquo;ll go into more detail about how to use callgrind later on.</p>
+<p>You&rsquo;ll probably have seen <code>perf</code>+<code>flamegraph</code> recommended before by <a href="http://troubles.md/rust-optimization/">certain very smart and handsome fellows</a> but I&rsquo;ve actually had more luck with callgrind (included in Valgrind). You can try to use <code>perf</code> but although it can give very good outputs for some programs it&rsquo;s quite inconsistent. Also, using callgrind means you can use KCachegrind, which is the best thing since sliced bread. In the linked article I said that Valgrind was scary, but that was one of my patented Uninformed Opinions™. It&rsquo;s actually very intuitive and, honestly, easier to use than the &ldquo;simple&rdquo; solution of using <code>perf</code>. I&rsquo;ll go into more detail about how to use callgrind later on.</p>
 <h2 id="finding-our-slow-sections">Finding our slow sections</h2>
 <p>It&rsquo;s often said<sup id="fnref:1"><a href="#fn:1" class="footnote-ref" role="doc-noteref">1</a></sup> that the slowest code is that which has been optimised without benchmarks. You wouldn&rsquo;t expect your code to work if you never ran it, so why should you expect it to be fast if you never benchmarked it? Writing good benchmarks is a bit of an art, because it&rsquo;s really easy to accidentally write benchmarks that make your code seem fast, when really the compiler is applying some optimisations that work in the side-effect-free world of the benchmark but can no longer get applied when you put it out into the wild.</p>
 <p>You should have a few different kinds of benchmarks:</p>
