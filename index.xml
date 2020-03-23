@@ -16,8 +16,7 @@
       <pubDate>Mon, 16 Mar 2020 13:27:36 +0200</pubDate>
       
       <guid>http://troubles.md/abusing-rustc/</guid>
-      <description>&lt;h2 id=&#34;a-tragicomedy-in-3ish-acts&#34;&gt;A Tragicomedy In 3(ish) Acts&lt;/h2&gt;
-&lt;p&gt;This article is a story about optimising the size and performance of &lt;code&gt;std::borrow::Cow&amp;lt;T&amp;gt;&lt;/code&gt; in Rust.
+      <description>&lt;p&gt;This article is a story about optimising the size and performance of &lt;code&gt;std::borrow::Cow&amp;lt;T&amp;gt;&lt;/code&gt; in Rust.
 It requires some basic knowledge of programming Rust, but doesn&amp;rsquo;t require any knowledge of the kind
 of low-level details of Rust&amp;rsquo;s compilation model. We&amp;rsquo;ll be touching on some pretty low-level
 subjects later on but I&amp;rsquo;ll explain them as we go. The optimisations will start pretty reasonable,
