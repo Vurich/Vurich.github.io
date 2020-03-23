@@ -800,7 +800,8 @@ implementation&lt;/em&gt; in the &lt;a href=&#34;https://github.com/simd-lite/si
 &lt;p&gt;&lt;strong&gt;NOTE&lt;/strong&gt;: This article originally contained an extended section about how to extend this
 implementation to support inlining data, but this was considered too cursed for the eyes of mere
 mortals. Perhaps after I&amp;rsquo;ve thoroughly cleansed myself with holy water, I may be able to bring
-myself to write an additional article detailing&lt;/p&gt;
+myself to write an additional article detailing how to implement this within our existing
+framework.&lt;/p&gt;
 &lt;/blockquote&gt;
 </description>
     </item>
