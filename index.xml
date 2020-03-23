@@ -16,7 +16,14 @@
       <pubDate>Mon, 16 Mar 2020 13:27:36 +0200</pubDate>
       
       <guid>http://troubles.md/abusing-rustc/</guid>
-      <description>&lt;p&gt;So, let&amp;rsquo;s talk about pointers.&lt;/p&gt;
+      <description>&lt;h3 id=&#34;a-tragicomedy-in-3ish-acts&#34;&gt;A Tragicomedy In 3(ish) Acts&lt;/h3&gt;
+&lt;p&gt;This article is a story about optimising the size and performance of &lt;code&gt;std::borrow::Cow&amp;lt;T&amp;gt;&lt;/code&gt; in Rust.
+It requires some basic knowledge of programming Rust, but doesn&amp;rsquo;t require any knowledge of the kind
+of low-level details of Rust&amp;rsquo;s compilation model. We&amp;rsquo;ll be touching on some pretty low-level
+subjects later on but I&amp;rsquo;ll explain them as we go. The optimisations will start pretty reasonable,
+but will continue to get more disgusting and cursed until all hell breaks loose and the skies
+themselves turn blood red with the rage of the ancients.&lt;/p&gt;
+&lt;p&gt;Anyway, to start things off, let&amp;rsquo;s briefly talk about pointers.&lt;/p&gt;
 &lt;p&gt;Specifically, let&amp;rsquo;s talk about &lt;em&gt;array&lt;/em&gt; pointers. In C, array pointers are the same as &amp;ldquo;normal&amp;rdquo;
 pointers, and have no size or other metadata attached. If you want to know the size of an array in
 C, you have to implement that yourself. For strings, this is tradionally implemented by ending the
@@ -25,12 +32,32 @@ this value and exit. For other arrays, this is usually implemented by supplying 
 additional parameter to the function or as a field in a struct. For a safe language like Rust,
 though, this simply doesn&amp;rsquo;t fly. Rust has a type &lt;code&gt;&amp;amp;[T]&lt;/code&gt;, which represents a borrowed array, and
 &lt;code&gt;Box&amp;lt;[T]&amp;gt;&lt;/code&gt;, which is an owned array. Both of these use the same syntax as &amp;ldquo;normal&amp;rdquo; pointers to a
-single element, but additionally store their length using some magic in the compiler itself, similar
-to the following C code. This means that &lt;code&gt;&amp;amp;[T]&lt;/code&gt; and &lt;code&gt;Box&amp;lt;[T]&amp;gt;&lt;/code&gt; are actually &lt;em&gt;two&lt;/em&gt; pointer-sized
-integers (i.e. 64-bit on 64-bit architectures and 32-bit on 32-bit architectures), one for the
-pointer to the first element and another for the length of the array. I&amp;rsquo;m going to explain a bit of
-groundwork here, to make sure that when we start invoking dark rites to twist and bend them you&amp;rsquo;re
-not totally lost.&lt;/p&gt;
+single element, but additionally store their length using some magic in the compiler itself. You can
+think of pointers in Rust being split into two different types: the pointer-to-sized-type (a pointer
+to a type whose size is known at compile-time, like &lt;code&gt;&amp;amp;u64&lt;/code&gt;, &lt;code&gt;&amp;amp;[u8; 10]&lt;/code&gt;, &lt;code&gt;&amp;amp;()&lt;/code&gt;, and so forth) and
+the pointer-to-unsized-type (a pointer to a type whose size is only known at runtime, such as
+&lt;code&gt;&amp;amp;[u8]&lt;/code&gt;, &lt;code&gt;&amp;amp;str&lt;/code&gt; or &lt;code&gt;&amp;amp;dyn Trait&lt;/code&gt;).&lt;/p&gt;
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;&lt;span class=&#34;k&#34;&gt;struct&lt;/span&gt; &lt;span class=&#34;nc&#34;&gt;Ptr&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;T&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;where&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;T&lt;/span&gt;: &lt;span class=&#34;nb&#34;&gt;Sized&lt;/span&gt;
+&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;address&lt;/span&gt;: &lt;span class=&#34;kt&#34;&gt;usize&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;struct&lt;/span&gt; &lt;span class=&#34;nc&#34;&gt;Ptr&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;T&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;where&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;T&lt;/span&gt;: &lt;span class=&#34;o&#34;&gt;!&lt;/span&gt;&lt;span class=&#34;nb&#34;&gt;Sized&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;address&lt;/span&gt;: &lt;span class=&#34;kt&#34;&gt;usize&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;// Rust currently only ever uses a pointer or pointer-sized integer for the fat pointer
+&lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;// extra data, but in theory we could have anything here, and it could be more than just
+&lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;// the size of a `usize`.
+&lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;extra_data&lt;/span&gt;: &lt;span class=&#34;kt&#34;&gt;usize&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;This means that &lt;code&gt;&amp;amp;[T]&lt;/code&gt; and &lt;code&gt;Box&amp;lt;[T]&amp;gt;&lt;/code&gt; are actually &lt;em&gt;two&lt;/em&gt; pointer-sized integers (i.e. 64-bit on 64-
+bit architectures and 32-bit on 32-bit architectures), one for the pointer to the first element and
+another for the length of the array. I&amp;rsquo;m going to explain a bit of groundwork here, to make sure
+that when we start invoking dark rites to twist and bend them you&amp;rsquo;re not totally lost.&lt;/p&gt;
 &lt;p&gt;So, if you&amp;rsquo;ve actually used Rust in real code, though, you might have noticed that this doesn&amp;rsquo;t
 mention &lt;code&gt;Vec&amp;lt;T&amp;gt;&lt;/code&gt;. &lt;code&gt;Box&amp;lt;[T]&amp;gt;&lt;/code&gt; is not a common type in Rust, as &lt;code&gt;Vec&amp;lt;T&amp;gt;&lt;/code&gt; is far more flexible - it
 allows you to add more elements to the array at runtime without making a new array, whereas
@@ -41,14 +68,45 @@ the &lt;code&gt;Vec&lt;/code&gt;. This means that it can allocate extra space th
 then pushing to that &lt;code&gt;Vec&lt;/code&gt; just writes into that space, without having to allocate a whole new
 array. Fine so far, although it means that &lt;code&gt;Vec&lt;/code&gt; sadly requires &lt;em&gt;three&lt;/em&gt; pointer-sized integers.
 Here&amp;rsquo;s a quick reference:&lt;/p&gt;
-&lt;div class=&#34;highlight&#34;&gt;&lt;pre class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;&lt;span class=&#34;c1&#34;&gt;// Size: 2 * size_of::&amp;lt;usize&amp;gt;()
+&lt;div class=&#34;highlight&#34;&gt;&lt;pre class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;&lt;span class=&#34;c1&#34;&gt;// This is invalid syntax in Rust of course, but it&amp;#39;s just an illustration
+&lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;// Size: 2 * size_of::&amp;lt;usize&amp;gt;()
 &lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;struct&lt;/span&gt; &lt;span class=&#34;kp&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;na&#34;&gt;&amp;#39;a&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;T&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
 &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;ptr&lt;/span&gt;: &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;const&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;T&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
 &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;length&lt;/span&gt;: &lt;span class=&#34;kt&#34;&gt;usize&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
 &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
 &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
 &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;// Size: 2 * size_of::&amp;lt;usize&amp;gt;()
-&lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;struct&lt;/span&gt; &lt;span class=&#34;nb&#34;&gt;Box&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;T&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;cp&#34;&gt;#[no_mangle]&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;pub&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;k&#34;&gt;fn&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;dyn_as_ref&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&#34;na&#34;&gt;&amp;#39;a&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;cow&lt;/span&gt;: &lt;span class=&#34;kp&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;na&#34;&gt;&amp;#39;a&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;CursedCow&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&#34;na&#34;&gt;&amp;#39;_&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;dyn&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;Foo&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;-&amp;gt; &lt;span class=&#34;kp&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;na&#34;&gt;&amp;#39;a&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;dyn&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;Foo&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;amp;**&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;cow&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;cp&#34;&gt;#[no_mangle]&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;pub&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;k&#34;&gt;fn&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;dyn_to_cow&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&#34;na&#34;&gt;&amp;#39;a&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;cow&lt;/span&gt;: &lt;span class=&#34;nc&#34;&gt;CursedCow&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&#34;na&#34;&gt;&amp;#39;a&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;dyn&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;Foo&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;-&amp;gt; &lt;span class=&#34;nc&#34;&gt;std&lt;/span&gt;::&lt;span class=&#34;n&#34;&gt;borrow&lt;/span&gt;::&lt;span class=&#34;n&#34;&gt;Cow&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&#34;na&#34;&gt;&amp;#39;a&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;dyn&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;Foo&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;cow&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;into&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;cp&#34;&gt;#[no_mangle]&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;pub&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;k&#34;&gt;fn&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;dyn_new_cow&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;cow&lt;/span&gt;: &lt;span class=&#34;nb&#34;&gt;Box&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;dyn&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;Foo&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;-&amp;gt; &lt;span class=&#34;nb&#34;&gt;Option&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;CursedCow&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&#34;nb&#34;&gt;&amp;#39;static&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;dyn&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;Foo&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;gt;&amp;gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;CursedCow&lt;/span&gt;::&lt;span class=&#34;n&#34;&gt;try_owned&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;cow&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;cp&#34;&gt;#[repr(transparent)]&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;pub&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;k&#34;&gt;struct&lt;/span&gt; &lt;span class=&#34;nc&#34;&gt;Test&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;kt&#34;&gt;u64&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;);&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;impl&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;nb&#34;&gt;ToOwned&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;k&#34;&gt;for&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;Test&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;k&#34;&gt;type&lt;/span&gt; &lt;span class=&#34;nc&#34;&gt;Owned&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;o&#34;&gt;=&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;nb&#34;&gt;Box&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;Test&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;k&#34;&gt;fn&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;to_owned&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;bp&#34;&gt;self&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;-&amp;gt; &lt;span class=&#34;nc&#34;&gt;Self&lt;/span&gt;::&lt;span class=&#34;n&#34;&gt;Owned&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;        &lt;/span&gt;&lt;span class=&#34;nb&#34;&gt;Box&lt;/span&gt;::&lt;span class=&#34;n&#34;&gt;new&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;Test&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;bp&#34;&gt;self&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;))&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;cp&#34;&gt;#[no_mangle]&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;pub&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;k&#34;&gt;fn&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;static_new_cow&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;cow&lt;/span&gt;: &lt;span class=&#34;nb&#34;&gt;Box&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;Test&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;-&amp;gt; &lt;span class=&#34;nb&#34;&gt;Option&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;CursedCow&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&#34;nb&#34;&gt;&amp;#39;static&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;Test&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;gt;&amp;gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;CursedCow&lt;/span&gt;::&lt;span class=&#34;n&#34;&gt;try_owned&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;cow&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;struct&lt;/span&gt; &lt;span class=&#34;nb&#34;&gt;Box&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;T&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
 &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;ptr&lt;/span&gt;: &lt;span class=&#34;o&#34;&gt;*&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;mut&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;T&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
 &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;length&lt;/span&gt;: &lt;span class=&#34;kt&#34;&gt;usize&lt;/span&gt;
 &lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
@@ -64,28 +122,34 @@ Here&amp;rsquo;s a quick reference:&lt;/p&gt;
 things I left out of the above types. Ignore them for now, I&amp;rsquo;ll get to it.&lt;/p&gt;
 &lt;/blockquote&gt;
 &lt;p&gt;So there&amp;rsquo;s one other array type that I want to talk about, and it&amp;rsquo;s what the rest of this article
-will be focussed on. That type is &lt;code&gt;Cow&amp;lt;[T]&amp;gt;&lt;/code&gt;, and its sister &lt;code&gt;Cow&amp;lt;str&amp;gt;&lt;/code&gt;. We can treat types
-containing &lt;code&gt;[T]&lt;/code&gt; as the same as types containing &lt;code&gt;str&lt;/code&gt;, as &lt;code&gt;str&lt;/code&gt; is the same as &lt;code&gt;[u8]&lt;/code&gt;, except that
-you can only construct it if the &lt;code&gt;[u8]&lt;/code&gt; array represents valid UTF8 text. &lt;code&gt;Cow&lt;/code&gt; types can be
-&lt;em&gt;either&lt;/em&gt; a &lt;code&gt;&amp;amp;&#39;a [T]&lt;/code&gt;/&lt;code&gt;&amp;amp;&#39;a str&lt;/code&gt; or a &lt;code&gt;Vec&amp;lt;T&amp;gt;&lt;/code&gt;/&lt;code&gt;String&lt;/code&gt;. They&amp;rsquo;re useful in many cases, but one big one
-is in parsing. One example of where this might be useful is if you have a parser for a programming
-language that has strings that can have escape characters. You can have many strings simply be a
-reference into the original program text:&lt;/p&gt;
+will be focussed on. That type is &lt;a href=&#34;https://doc.rust-lang.org/std/borrow/enum.Cow.html&#34;&gt;&lt;code&gt;std::borrow::Cow&lt;/code&gt;&lt;/a&gt;. We&amp;rsquo;ll start by talking about
+&lt;code&gt;Cow&amp;lt;[T]&amp;gt;&lt;/code&gt; and &lt;code&gt;Cow&amp;lt;str&amp;gt;&lt;/code&gt;, although &lt;code&gt;Cow&lt;/code&gt; is generic and works with other types, which we&amp;rsquo;ll get to
+later. We&amp;rsquo;ll mostly be talking about &lt;code&gt;Cow&amp;lt;[T]&amp;gt;&lt;/code&gt; when it comes to implementation, since &lt;code&gt;Cow&amp;lt;str&amp;gt;&lt;/code&gt; is
+the same as &lt;code&gt;Cow&amp;lt;[u8]&amp;gt;&lt;/code&gt; at runtime - it just requires some extra invariants to be true about the
+bytes it contains and so it must be a separate type. &lt;code&gt;Cow&amp;lt;[T]&amp;gt;&lt;/code&gt;/&lt;code&gt;Cow&amp;lt;str&amp;gt;&lt;/code&gt; can be &lt;em&gt;either&lt;/em&gt; a &lt;code&gt;&amp;amp;&#39;a [T]&lt;/code&gt;/&lt;code&gt;&amp;amp;&#39;a str&lt;/code&gt; or a &lt;code&gt;Vec&amp;lt;T&amp;gt;&lt;/code&gt;/&lt;code&gt;String&lt;/code&gt;. They&amp;rsquo;re useful in many cases, but one big one is in parsing.
+One example of where this might be useful is if you have a parser for a programming language that
+has strings that can have escape characters. You can have many strings simply be a reference into
+the original program text:&lt;/p&gt;
 &lt;pre&gt;&lt;code&gt;let a = &amp;quot;Hello, world&amp;quot;;
          ^----------^ Take a reference to these characters in the original program text
                       and use it as the string value.
-&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;If you have an escape sequence, however, you need to allocate a new &lt;code&gt;String&lt;/code&gt; (which is an &lt;em&gt;owned&lt;/em&gt;
-string type like &lt;code&gt;Box&amp;lt;[T]&amp;gt;&lt;/code&gt; is an owned array type) and write a version of the string into that
-buffer with all the escape sequences turned into the characters they represent. You can represent
-this with &lt;code&gt;Cow&amp;lt;str&amp;gt;&lt;/code&gt; - either &lt;code&gt;Cow::Borrowed(some_string_reference)&lt;/code&gt; if the string can be taken from
-the program text unchanged, or &lt;code&gt;Cow::Owned(some_computed_string)&lt;/code&gt; if the string had to be edited. So
-how many bytes does &lt;code&gt;Cow&amp;lt;[T]&amp;gt;&lt;/code&gt; take up? Well, it&amp;rsquo;s either a &lt;code&gt;Vec&amp;lt;T&amp;gt;&lt;/code&gt; or a &lt;code&gt;&amp;amp;[T]&lt;/code&gt;, so that means that
-we need enough space for &lt;code&gt;Vec&amp;lt;T&amp;gt;&lt;/code&gt;, but we can reuse some of that space if it&amp;rsquo;s an &lt;code&gt;&amp;amp;[T]&lt;/code&gt;, since it
-can only be one or the other. A &lt;code&gt;Vec&amp;lt;T&amp;gt;&lt;/code&gt; takes up 3 pointer-size integers, and we can reuse 2 of
-those for the &lt;code&gt;&amp;amp;[T]&lt;/code&gt;, so that means we only need 3 pointer-size integers. Except we also need to
-store a &amp;ldquo;tag&amp;rdquo; for whether it&amp;rsquo;s a &lt;code&gt;Vec&amp;lt;T&amp;gt;&lt;/code&gt; or an &lt;code&gt;&amp;amp;[T]&lt;/code&gt;. So that means that it&amp;rsquo;s 3 pointer-size
-integers, plus a single bit that can be either 0 for &lt;code&gt;Vec&amp;lt;T&amp;gt;&lt;/code&gt; or 1 for &lt;code&gt;&amp;amp;[T]&lt;/code&gt;. So for 64-bit, that&amp;rsquo;d
-be 3 * 64 + 1, or 193, right?&lt;/p&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;If you have an escape sequence, however, you need to allocate a new &lt;code&gt;String&lt;/code&gt;, which is an &lt;em&gt;owned&lt;/em&gt;
+string type, allocated on the heap, like &lt;code&gt;Box&amp;lt;[T]&amp;gt;&lt;/code&gt; is an owned array type. This requests a block of
+memory which doesn&amp;rsquo;t have to follow the same lifetime rules as borrows - borrows must be created in
+an &lt;em&gt;outer&lt;/em&gt; scope and passed &lt;em&gt;inwards&lt;/em&gt;, but owned pointers can be created in an &lt;em&gt;inner&lt;/em&gt; scope and
+passed back &lt;em&gt;outwards&lt;/em&gt;, and in general are far more flexible, at the cost of inhibiting some
+optimisations and requiring computation to be done to create and destroy them. Once we&amp;rsquo;ve allocated
+our &lt;code&gt;String&lt;/code&gt;, we write a version of the string from the program text into that buffer with all the
+escape sequences turned into the characters they represent. You can represent this with &lt;code&gt;Cow&amp;lt;str&amp;gt;&lt;/code&gt; -
+either &lt;code&gt;Cow::Borrowed(some_string_reference)&lt;/code&gt; if the string can be taken from the program text
+unchanged, or &lt;code&gt;Cow::Owned(some_computed_string)&lt;/code&gt; if the string had to be edited. So how many bytes
+does &lt;code&gt;Cow&amp;lt;[T]&amp;gt;&lt;/code&gt; take up? Well, it&amp;rsquo;s either a &lt;code&gt;Vec&amp;lt;T&amp;gt;&lt;/code&gt; or a &lt;code&gt;&amp;amp;[T]&lt;/code&gt;, so that means that we need enough
+space for &lt;code&gt;Vec&amp;lt;T&amp;gt;&lt;/code&gt;, but we can reuse some of that space if it&amp;rsquo;s an &lt;code&gt;&amp;amp;[T]&lt;/code&gt;, since it can only be one
+or the other. A &lt;code&gt;Vec&amp;lt;T&amp;gt;&lt;/code&gt; takes up 3 pointer-size integers, and we can reuse 2 of those for the
+&lt;code&gt;&amp;amp;[T]&lt;/code&gt;, so that means we only need 3 pointer-size integers. Except we also need to store a &amp;ldquo;tag&amp;rdquo; for
+whether it&amp;rsquo;s a &lt;code&gt;Vec&amp;lt;T&amp;gt;&lt;/code&gt; or an &lt;code&gt;&amp;amp;[T]&lt;/code&gt;. So that means that it&amp;rsquo;s 3 pointer-size integers, plus a single
+bit that can be either 0 for &lt;code&gt;Vec&amp;lt;T&amp;gt;&lt;/code&gt; or 1 for &lt;code&gt;&amp;amp;[T]&lt;/code&gt;. So for 64-bit, that&amp;rsquo;d be 3 * 64 + 1, or 193,
+right?&lt;/p&gt;
 &lt;p&gt;Unfortunately not. You can&amp;rsquo;t access a type at a bit offset, only at a &lt;em&gt;byte&lt;/em&gt; offset. So that means
 that our size has to be a multiple of 8. Easy, we round it up and have 7 unused bits, right? Well
 still no. Integers have to be at an offset that is a multiple of its size. You can have a &lt;code&gt;u64&lt;/code&gt;
@@ -99,7 +163,7 @@ downsides to this increase in size that I&amp;rsquo;ll get to later. We can conf
 &lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;// integer
 &lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;println&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;!&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;{}&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;std&lt;/span&gt;::&lt;span class=&#34;n&#34;&gt;mem&lt;/span&gt;::&lt;span class=&#34;n&#34;&gt;size_of&lt;/span&gt;::&lt;span class=&#34;o&#34;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;std&lt;/span&gt;::&lt;span class=&#34;n&#34;&gt;borrow&lt;/span&gt;::&lt;span class=&#34;n&#34;&gt;Cow&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;kt&#34;&gt;u8&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;gt;&amp;gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;());&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
 &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id=&#34;part-1-some-reasonable-optimisations&#34;&gt;Part 1: Some Reasonable Optimisations&lt;/h2&gt;
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;h2 id=&#34;act-1-some-reasonable-optimisations&#34;&gt;Act 1: Some Reasonable Optimisations&lt;/h2&gt;
 &lt;p&gt;So what can we do to help? Well there are a few things. For a start, we can notice that if the
 vector has zero capacity, we can treat it identically to an empty array for most operations. Vectors
 with zero capacity don&amp;rsquo;t need their &amp;ldquo;drop code&amp;rdquo; ran, for example. So let&amp;rsquo;s make a version of &lt;code&gt;Vec&lt;/code&gt;
@@ -151,10 +215,7 @@ same as &lt;code&gt;Box&amp;lt;[T]&amp;gt;&lt;/code&gt; for &lt;code&gt;Option&l
 &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;cap&lt;/span&gt;: &lt;span class=&#34;kt&#34;&gt;usize&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
 &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
 &lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;Again we can manually do the optimisation where we check &lt;code&gt;cap&lt;/code&gt; for zero, but now Rust will
-automatically use a null pointer for &lt;code&gt;ptr&lt;/code&gt; to mean &lt;code&gt;None&lt;/code&gt; if we have an &lt;code&gt;Option&amp;lt;CowArr&amp;lt;T&amp;gt;&amp;gt;&lt;/code&gt;. This is
-already implemented in my &lt;code&gt;cowvec&lt;/code&gt; crate, which you can find &lt;a href=&#34;https://crates.io/crates/cowvec/&#34;&gt;at crates.io/crates/cowvec&lt;/a&gt;,
-and an alternate implementation of the same idea is in my colleague Maciej&amp;rsquo;s far better-named
-&lt;a href=&#34;https://crates.io/crates/beef/&#34;&gt;&lt;code&gt;beef&lt;/code&gt; crate&lt;/a&gt;. &lt;em&gt;Now&lt;/em&gt; let&amp;rsquo;s try checking the size:&lt;/p&gt;
+automatically use a null pointer for &lt;code&gt;ptr&lt;/code&gt; to mean &lt;code&gt;None&lt;/code&gt; if we have an &lt;code&gt;Option&amp;lt;CowArr&amp;lt;T&amp;gt;&amp;gt;&lt;/code&gt;.&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;pre class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;&lt;span class=&#34;k&#34;&gt;fn&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;main&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
 &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;// Both of these print 24 on 64-bit systems, and 12 on 32-bit systems
 &lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;println&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;!&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;s&#34;&gt;&amp;#34;{}&amp;#34;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;std&lt;/span&gt;::&lt;span class=&#34;n&#34;&gt;mem&lt;/span&gt;::&lt;span class=&#34;n&#34;&gt;size_of&lt;/span&gt;::&lt;span class=&#34;o&#34;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;CowArr&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&#34;kt&#34;&gt;u8&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;gt;&amp;gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;());&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
@@ -239,13 +300,11 @@ know assembly can be scary so I&amp;rsquo;ve written comments:&lt;/p&gt;
 &lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;Even if you don&amp;rsquo;t understand assembly, you can see that this is an improvement by the reduction in
 instruction count, if nothing else. It also reduces register pressure, although if you don&amp;rsquo;t know
 what that means then don&amp;rsquo;t worry - its effect is small enough that you don&amp;rsquo;t need to worry about it
-for now. Let&amp;rsquo;s see if this actually makes a difference in a real program, for example, the &lt;a href=&#34;https://github.com/maciejhirsz/json-rust/&#34;&gt;JSON
-library&lt;/a&gt; written by my aforementioned colleague - since our discussion on optimising this
-library was how this article ended up getting written.&lt;/p&gt;
+for now.&lt;/p&gt;
 &lt;p&gt;If you know anything about calling conventions, you might notice something a bit odd about that
 assembly code. We&amp;rsquo;ll get to it in due time, although not until after we pass through into the
 Forbidden Realms.&lt;/p&gt;
-&lt;h2 id=&#34;part-2-stepping-into-the-forbidden-realms&#34;&gt;Part 2: Stepping into the Forbidden Realms&lt;/h2&gt;
+&lt;h2 id=&#34;act-2-stepping-into-the-forbidden-realms&#34;&gt;Act 2: Stepping into the Forbidden Realms&lt;/h2&gt;
 &lt;p&gt;So far, so simple. But we can do better, if we&amp;rsquo;re willing to add some restrictions. We can&amp;rsquo;t reduce
 the size of &lt;code&gt;ptr&lt;/code&gt; since it&amp;rsquo;s not really possible to safely make many assumptions about the range of
 values a pointer can take, but the same can&amp;rsquo;t be said for &lt;code&gt;len&lt;/code&gt; and &lt;code&gt;cap&lt;/code&gt;. If we&amp;rsquo;re on a 64-bit
@@ -281,9 +340,11 @@ Rust passes a struct into a function or returns a struct from a function, it has
 handle sharing the struct between the caller and the callee. If the struct is &amp;ldquo;small&amp;rdquo; (meaning two
 fields or less, with each field fitting into a single register), then the struct will be passed as
 an argument in registers, and returned in registers. Otherwise, the struct will be written to stack
-and a pointer to the struct will be passed to the callee. You&amp;rsquo;ll notice that we can play rules-
-lawyer here: although the struct above is &lt;em&gt;not&lt;/em&gt; considered &amp;ldquo;small&amp;rdquo; by Rust, we can make a version of
-it that &lt;em&gt;is&lt;/em&gt; considered small. Let&amp;rsquo;s do that:&lt;/p&gt;
+and a pointer to the struct will be passed to the callee. This is the &amp;ldquo;something a bit odd&amp;rdquo; that I
+mentioned before - many people assume that Rust &lt;em&gt;always&lt;/em&gt; passes structs with more than 1 element by
+pointer, and in fact until relatively recently it did. Now, if you&amp;rsquo;re as much of a rules-lawyer as
+me, you might notice a trick we can do here: although the struct above is &lt;em&gt;not&lt;/em&gt; considered &amp;ldquo;small&amp;rdquo;
+by Rust, we can make a version of it that &lt;em&gt;is&lt;/em&gt; considered small. Let&amp;rsquo;s do that:&lt;/p&gt;
 &lt;div class=&#34;highlight&#34;&gt;&lt;pre class=&#34;chroma&#34;&gt;&lt;code class=&#34;language-rust&#34; data-lang=&#34;rust&#34;&gt;&lt;span class=&#34;k&#34;&gt;use&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;std&lt;/span&gt;::&lt;span class=&#34;n&#34;&gt;ptr&lt;/span&gt;::&lt;span class=&#34;n&#34;&gt;NonNull&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
 &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
 &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;k&#34;&gt;struct&lt;/span&gt; &lt;span class=&#34;nc&#34;&gt;CowArr&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&#34;na&#34;&gt;&amp;#39;a&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;,&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;T&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
@@ -393,7 +454,7 @@ read assembly, then all you need to know is that the &lt;code&gt;[...]&lt;/code&
 &lt;p&gt;Ok, so we&amp;rsquo;ve optimised the &lt;code&gt;Cow&lt;/code&gt; arrays about as much as we can. Now is when we start to invoke the
 Dark Magicks and risk the wrath of the Old Ones (you know, the Rust core team). Let&amp;rsquo;s make a
 &amp;ldquo;generic&amp;rdquo; optimised &lt;code&gt;Cow&lt;/code&gt;, one that works with more than just arrays.&lt;/p&gt;
-&lt;h2 id=&#34;part-3-forgive-me&#34;&gt;Part 3: Forgive Me&lt;/h2&gt;
+&lt;h2 id=&#34;act-3-forgive-me&#34;&gt;Act 3: Forgive Me&lt;/h2&gt;
 &lt;p&gt;So this is all well and good, but it&amp;rsquo;s &lt;em&gt;just not cursed enough&lt;/em&gt;. It basically reimplements
 &lt;code&gt;Cow&amp;lt;[T]&amp;gt;&lt;/code&gt; with a custom type that doesn&amp;rsquo;t work for &lt;code&gt;Cow&amp;lt;str&amp;gt;&lt;/code&gt; - you have to write your own wrapper,
 maybe call it &lt;code&gt;CowStr&lt;/code&gt;. Then repeat that for every type. No, we can do better. We can make a
@@ -468,11 +529,11 @@ to only get the bits that represent the length or the capacity, respectively.&lt
 &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
 &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
 &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;k&#34;&gt;fn&lt;/span&gt; &lt;span class=&#34;nf&#34;&gt;owned&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;bp&#34;&gt;self&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;-&amp;gt; &lt;span class=&#34;nb&#34;&gt;Option&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;NonNull&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;lt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;[&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;T&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;]&lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;gt;&amp;gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
-&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;        &lt;/span&gt;&lt;span class=&#34;kd&#34;&gt;let&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;k&#34;&gt;mut&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;this&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;o&#34;&gt;=&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;mem&lt;/span&gt;::&lt;span class=&#34;n&#34;&gt;ManuallyDrop&lt;/span&gt;::&lt;span class=&#34;n&#34;&gt;new&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;bp&#34;&gt;self&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;);&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
 &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;        &lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;// Fail if the capacity is too high
-&lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;        &lt;/span&gt;&lt;span class=&#34;k&#34;&gt;if&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;this&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;len&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;CAP_MASK&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;o&#34;&gt;!=&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;o&#34;&gt;||&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;this&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;capacity&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;CAP_MASK&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;o&#34;&gt;!=&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;c1&#34;&gt;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;        &lt;/span&gt;&lt;span class=&#34;k&#34;&gt;if&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;bp&#34;&gt;self&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;len&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;CAP_MASK&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;o&#34;&gt;!=&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;o&#34;&gt;||&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;bp&#34;&gt;self&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;capacity&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;()&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;o&#34;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;CAP_MASK&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;o&#34;&gt;!=&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;mi&#34;&gt;0&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
 &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;            &lt;/span&gt;&lt;span class=&#34;nb&#34;&gt;None&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
 &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;        &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;k&#34;&gt;else&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;            &lt;/span&gt;&lt;span class=&#34;kd&#34;&gt;let&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;k&#34;&gt;mut&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;this&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;o&#34;&gt;=&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;mem&lt;/span&gt;::&lt;span class=&#34;n&#34;&gt;ManuallyDrop&lt;/span&gt;::&lt;span class=&#34;n&#34;&gt;new&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;bp&#34;&gt;self&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;);&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
 &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;            &lt;/span&gt;&lt;span class=&#34;k&#34;&gt;unsafe&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
 &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;                &lt;/span&gt;&lt;span class=&#34;nb&#34;&gt;Some&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;NonNull&lt;/span&gt;::&lt;span class=&#34;n&#34;&gt;from&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;slice&lt;/span&gt;::&lt;span class=&#34;n&#34;&gt;from_raw_parts_mut&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
 &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;                    &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;this&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;as_mut_ptr&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(),&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
@@ -618,6 +679,7 @@ shall we?&lt;/p&gt;
 &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
 &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;        &lt;/span&gt;&lt;span class=&#34;k&#34;&gt;unsafe&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
 &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;            &lt;/span&gt;&lt;span class=&#34;k&#34;&gt;if&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;Self&lt;/span&gt;::&lt;span class=&#34;n&#34;&gt;is_owned&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;NonNull&lt;/span&gt;::&lt;span class=&#34;n&#34;&gt;new_unchecked&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;original_ptr&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;))&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
+&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;                &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;this&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;.&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;into_inner&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;();&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
 &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;                &lt;/span&gt;&lt;span class=&#34;nb&#34;&gt;None&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
 &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;            &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;k&#34;&gt;else&lt;/span&gt;&lt;span class=&#34;w&#34;&gt; &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;{&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
 &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;                &lt;/span&gt;&lt;span class=&#34;nb&#34;&gt;Some&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;NonNull&lt;/span&gt;::&lt;span class=&#34;n&#34;&gt;new_unchecked&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;ptr&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;))&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
@@ -641,7 +703,9 @@ shall we?&lt;/p&gt;
 &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;        &lt;/span&gt;&lt;span class=&#34;nb&#34;&gt;Box&lt;/span&gt;::&lt;span class=&#34;n&#34;&gt;from_raw&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;ptr&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
 &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
 &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
-&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;So there we go, this actually works and you can see the gist with examples &lt;a href=&#34;https://gist.github.com/Vurich/aa5b9f6ddc29448f1cafea156f719996&#34;&gt;here&lt;/a&gt;.
+&lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;So there we go, apart from the implementations of the traits you&amp;rsquo;d expect from a &lt;code&gt;Cow&lt;/code&gt;
+implementation, which should be fairly self-explanatory, and a &lt;code&gt;Drop&lt;/code&gt; implementation, which is also
+pretty simple, this is more-or-less a fully-working drop-in replacement for &lt;code&gt;std::borrow::Cow&lt;/code&gt;.
 Finally, let&amp;rsquo;s see what the codegen looks like for this implementation of &lt;code&gt;Cursed&lt;/code&gt; for &lt;code&gt;Box&amp;lt;T&amp;gt;&lt;/code&gt;. You
 can just take my word for it that &lt;code&gt;CursedCow&amp;lt;[T]&amp;gt;&lt;/code&gt; generates exactly the same code as &lt;code&gt;CowArr&amp;lt;T&amp;gt;&lt;/code&gt;.
 Let&amp;rsquo;s write the code for a couple of different scenarios that we want to test the codegen for -
@@ -678,7 +742,8 @@ implementation for a non-dynamically-sized type that still used &lt;code&gt;Box&
 &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;    &lt;/span&gt;&lt;span class=&#34;n&#34;&gt;CursedCow&lt;/span&gt;::&lt;span class=&#34;n&#34;&gt;try_owned&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;(&lt;/span&gt;&lt;span class=&#34;n&#34;&gt;cow&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;)&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
 &lt;/span&gt;&lt;span class=&#34;w&#34;&gt;&lt;/span&gt;&lt;span class=&#34;p&#34;&gt;}&lt;/span&gt;&lt;span class=&#34;w&#34;&gt;
 &lt;/span&gt;&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;p&gt;The code made by these functions is pretty amazingly minimal, and almost entirely avoids using the
-stack - keeping most values in registers:&lt;/p&gt;
+stack - keeping most values in registers. I won&amp;rsquo;t explain this assembly fully, but it&amp;rsquo;s here for
+completeness:&lt;/p&gt;
 &lt;pre&gt;&lt;code&gt;dyn_as_ref:
     mov    rdx, [rdi + 8]
     movabs rax, 9223372036854775807
@@ -691,10 +756,10 @@ dyn_to_cow:
     and    rcx, rsi
     test   rsi, rsi
     jns    .is_ref
-    mov esi, 1
-    mov [rax + 8], rcx
-    mov [rax + 16], rdx
-    mov [rax], rsi
+    mov    esi, 1
+    mov    [rax + 8], rcx
+    mov    [rax + 16], rdx
+    mov    [rax], rsi
     ret
 .is_ref:
     xor    esi, esi
@@ -719,7 +784,24 @@ static_new_cow:
     test   rdi, rdi
     cmovns rax, rcx
     ret
-&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;Now if you don&amp;rsquo;t mind, I&amp;rsquo;m going to go seek the advice of a priest.&lt;/p&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;p&gt;Anyway, if you want to try this out then I recommend the &lt;a href=&#34;https://crates.io/crates/beef/&#34;&gt;&lt;code&gt;beef&lt;/code&gt; crate&lt;/a&gt;, which acts as a drop-
+in replacement for &lt;code&gt;std::borrow::Cow&lt;/code&gt; for most cases. It&amp;rsquo;s written by my colleague and friend, and
+this article came about due to discussions about how to optimise that crate for the usecase of
+parsing JSON. It doesn&amp;rsquo;t include our incredibly sketchy &lt;code&gt;dyn Trait&lt;/code&gt; implementation, thank god.
+There&amp;rsquo;s also the simpler &lt;a href=&#34;https://crates.io/crates/cowvec/&#34;&gt;&lt;code&gt;cowvec&lt;/code&gt; crate&lt;/a&gt;, which is my earlier implementation, roughly
+equivalent to the code we had at the end of Act 2. I&amp;rsquo;d only recommend &lt;code&gt;beef&lt;/code&gt; over &lt;code&gt;cowvec&lt;/code&gt; because
+&lt;code&gt;cowvec&lt;/code&gt; doesn&amp;rsquo;t act as a drop-in replacement as it has a different signature to &lt;code&gt;std::borrow::Cow&lt;/code&gt;.
+Well, that and the fact that &lt;code&gt;beef&lt;/code&gt; is clearly the far better name.&lt;/p&gt;
+&lt;p&gt;The &lt;a href=&#34;https://github.com/simd-lite/simdjson-rs&#34;&gt;JSON-parsing crate &lt;code&gt;simdjson-rs&lt;/code&gt;&lt;/a&gt; actually integrated &lt;code&gt;beef&lt;/code&gt; recently, and you can
+see the improvements to throughput that they saw &lt;em&gt;just from switching out their &lt;code&gt;Cow&lt;/code&gt;
+implementation&lt;/em&gt; in the &lt;a href=&#34;https://github.com/simd-lite/simdjson-rs/pull/113&#34;&gt;integration PR&lt;/a&gt;.&lt;/p&gt;
+&lt;p&gt;Now if you don&amp;rsquo;t mind, I&amp;rsquo;m going to go seek the advice of a priest.&lt;/p&gt;
+&lt;blockquote&gt;
+&lt;p&gt;&lt;strong&gt;NOTE&lt;/strong&gt;: This article originally contained an extended section about how to extend this
+implementation to support inlining data, but this was considered too cursed for the eyes of mere
+mortals. Perhaps after I&amp;rsquo;ve thoroughly cleansed myself with holy water, I may be able to bring
+myself to write an additional article detailing&lt;/p&gt;
+&lt;/blockquote&gt;
 </description>
     </item>
     
